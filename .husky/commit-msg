@@ -1,0 +1,18 @@
+#!/bin/sh
+
+# Conventional Commits validation hook
+# Format: type(scope): subject
+# Types: feat, fix, docs, style, refactor, test, chore, perf, ci, build, revert
+
+commit_msg=$(cat "$1")
+pattern="^(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(\(.+\))?: .{1,50}"
+
+if ! echo "$commit_msg" | grep -qE "$pattern"; then
+  echo "Error: Commit message does not follow Conventional Commits format."
+  echo "Expected: type(scope): subject"
+  echo "Types: feat, fix, docs, style, refactor, test, chore, perf, ci, build, revert"
+  echo "Example: feat(auth): add login endpoint"
+  exit 1
+fi
+
+exit 0

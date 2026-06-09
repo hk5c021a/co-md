@@ -1,0 +1,33 @@
+#!/bin/sh
+
+# CO-MD pre-commit hook
+# Runs linting and formatting checks on staged files.
+
+# Check if pnpm is available
+if ! command -v pnpm >/dev/null 2>&1; then
+  echo "[pre-commit] pnpm not found — skipping checks"
+  exit 0
+fi
+
+# Check if oxlint is installed (skip if dependencies not set up yet)
+if ! pnpm exec oxlint --version >/dev/null 2>&1; then
+  echo "[pre-commit] oxlint not installed — skipping (run 'pnpm install' first)"
+  exit 0
+fi
+
+echo "[pre-commit] running oxlint..."
+pnpm exec oxlint --quiet
+if [ $? -ne 0 ]; then
+  echo "[pre-commit] oxlint found issues — run 'vp check --fix' to auto-fix"
+  exit 1
+fi
+
+echo "[pre-commit] running oxfmt check..."
+pnpm exec oxfmt --check .
+if [ $? -ne 0 ]; then
+  echo "[pre-commit] formatting issues found — run 'vp check --fix' to auto-fix"
+  exit 1
+fi
+
+echo "[pre-commit] all checks passed"
+exit 0
