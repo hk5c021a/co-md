@@ -1,0 +1,1 @@
+DROP INDEX "documents_content_idx";
