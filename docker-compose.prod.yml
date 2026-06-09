@@ -1,0 +1,287 @@
+# Production environment override
+# Usage: docker compose --env-file .env.prod.local -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Caddy auto-provisions TLS certificates via Let's Encrypt.
+# Set DOMAIN=your-domain.com in .env.prod.local before starting.
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: '50m'
+    max-file: '5'
+
+services:
+  caddy:
+    image: caddy:2.8-alpine
+    container_name: collab_caddy
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN is required for production TLS}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - D:/ai/projects/co-md/certs:/certs:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - collab_network
+    depends_on:
+      backend:
+        condition: service_healthy
+      ws-server:
+        condition: service_healthy
+    restart: always
+    logging: *default-logging
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '--spider', '--no-check-certificate', '--header', 'Host: ${DOMAIN:-localhost}', 'http://localhost/health']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    ulimits:
+      nofile: { soft: 65536, hard: 65536 }
+    # Resource limits for docker compose (non-Swarm) — deploy.resources is Swarm-only
+    mem_limit: 128M
+    mem_reservation: 64M
+    cpus: 0.5
+
+  postgres:
+    ports: [] # Close external port from dev compose
+    restart: always
+    stop_grace_period: 120s
+    shm_size: '256m'
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-collab_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgresql.prod.conf:/etc/postgresql/postgresql.conf:ro
+    command: postgres -c 'config_file=/etc/postgresql/postgresql.conf'
+    logging: *default-logging
+    security_opt:
+      - no-new-privileges:true
+    ulimits:
+      nofile: { soft: 65536, hard: 65536 }
+    mem_limit: 1G
+    mem_reservation: 512M
+    cpus: 2
+
+  redis:
+    ports: [] # Close external port from dev compose
+    restart: always
+    stop_grace_period: 30s
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    volumes:
+      - redis_data:/data
+    logging: *default-logging
+    security_opt:
+      - no-new-privileges:true
+    ulimits:
+      nofile: { soft: 65536, hard: 65536 }
+    mem_limit: 256M
+    mem_reservation: 128M
+    cpus: 0.5
+
+  rustfs:
+    ports: [] # Close external port from dev compose
+    restart: always
+    environment:
+      RUSTFS_USER: ${RUSTFS_USER:?RUSTFS_USER is required}
+      RUSTFS_PASSWORD: ${RUSTFS_PASSWORD:?RUSTFS_PASSWORD is required}
+    volumes:
+      - rustfs_data:/data
+    logging: *default-logging
+    security_opt:
+      - no-new-privileges:true
+    ulimits:
+      nofile: { soft: 65536, hard: 65536 }
+    mem_limit: 256M
+    mem_reservation: 128M
+    cpus: 0.5
+
+  # Removed: mailpit (not used in production — real SMTP via SMTP_* env vars)
+
+  backend:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    container_name: collab_backend
+    expose:
+      - '3000'
+    environment:
+      NODE_ENV: production
+      PORT: ${PORT:-3000}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-collab_db}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required for production}
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:?INTERNAL_API_SECRET is required for production}
+      RUSTFS_ENDPOINT: http://rustfs:9000
+      RUSTFS_BUCKET: ${RUSTFS_BUCKET:-collab-files}
+      RUSTFS_ACCESS_KEY: ${RUSTFS_USER}
+      RUSTFS_SECRET_KEY: ${RUSTFS_PASSWORD}
+      CORS_ORIGIN: https://${DOMAIN}
+      PASSWORD_RESET_BASE_URL: https://${DOMAIN}
+      SMTP_HOST: ${SMTP_HOST:?SMTP_HOST is required for email}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_SECURE: ${SMTP_SECURE:-true}
+      SMTP_USER: ${SMTP_USER:?SMTP_USER is required for email}
+      SMTP_PASS: ${SMTP_PASS:?SMTP_PASS is required for email}
+      SMTP_FROM: ${SMTP_FROM:-noreply@${DOMAIN}}
+      # WARNING: auto-migration on startup. For multi-instance deployments, set to
+      # 'false' and run migrations as a separate deployment step to avoid races.
+      MIGRATE_ON_STARTUP: 'true'
+      VITE_DEV: 'false'
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rustfs:
+        condition: service_healthy
+    volumes:
+      - ./apps/frontend/dist:/app/frontend/dist:ro
+    networks:
+      - collab_network
+    restart: always
+    stop_grace_period: 30s
+    logging: *default-logging
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512M
+    mem_reservation: 256M
+    cpus: 1
+
+  ws-server:
+    build:
+      context: .
+      dockerfile: apps/ws-server/Dockerfile
+    container_name: collab_ws_server
+    stop_grace_period: 60s
+    expose:
+      - '4000'
+    environment:
+      NODE_ENV: production
+      WS_PORT: ${WS_PORT:-4000}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      BACKEND_URL: http://backend:3000
+      CORS_ORIGIN: https://${DOMAIN}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required for production}
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:?INTERNAL_API_SECRET is required for production}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    networks:
+      - collab_network
+    restart: always
+    logging: *default-logging
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512M
+    mem_reservation: 256M
+    cpus: 1
+
+  # Nginx frontend — optional alternative to Caddy-to-backend static serving.
+  # Enable with: docker compose --profile nginx-frontend ... up -d
+  frontend:
+    build:
+      context: .
+      dockerfile: apps/frontend/Dockerfile
+    container_name: collab_frontend
+    expose:
+      - '80'
+    depends_on:
+      backend:
+        condition: service_healthy
+      ws-server:
+        condition: service_healthy
+    networks:
+      - collab_network
+    restart: always
+    logging: *default-logging
+    mem_limit: 128M
+    mem_reservation: 64M
+    cpus: 0.5
+    profiles:
+      - nginx-frontend
+
+  pg-backup:
+    # NOTE: For production deployments, consider:
+    #   - Off-site backup storage (S3/GCS/rsync to remote server)
+    #   - WAL archiving (archive_mode=on + archive_command) for point-in-time recovery
+    #   - Periodic restore testing to verify backup integrity
+    image: postgres:16-alpine
+    container_name: collab_pg_backup
+    user: '70:70'  # Run as postgres user (UID 70) instead of root
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      PGDATABASE: ${POSTGRES_DB:-collab_db}
+    volumes:
+      - backup_data:/backups
+    networks:
+      - collab_network
+    restart: always
+    logging: *default-logging
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256M
+    mem_reservation: 128M
+    cpus: 0.5
+    healthcheck:
+      test: ['CMD-SHELL', 'test -f /tmp/pg_backup_ok && test $$(( $$(date +%s) - $$(cat /tmp/pg_backup_ok) )) -lt 90000 || exit 1']
+      interval: 1h
+      timeout: 10s
+      retries: 2
+      start_period: 24h
+    command:
+      - /bin/sh
+      - -c
+      - |
+        # Run initial backup 30s after startup, then daily thereafter.
+        sleep 30
+        FILE=/backups/backup_$$(date +%Y%m%d_%H%M%S).dump
+        # -Fc = custom format (compressed); restore with pg_restore
+        if pg_dump -Fc -f "$$FILE" 2>/tmp/pg_backup_err; then
+          echo "$$(date): initial backup written to $$FILE"
+          date +%%s > /tmp/pg_backup_ok
+        else
+          echo "$$(date): INITIAL BACKUP FAILED -- $$(cat /tmp/pg_backup_err)" >&2
+        fi
+        find /backups -name "*.dump" -mtime +30 -delete 2>/dev/null
+        while true; do
+          sleep 86400
+          FILE=/backups/backup_$$(date +%Y%m%d_%H%M%S).dump
+          # -Fc = custom format (compressed); restore with pg_restore
+          if pg_dump -Fc -f "$$FILE" 2>/tmp/pg_backup_err; then
+            echo "$$(date): backup written to $$FILE"
+            date +%%s > /tmp/pg_backup_ok
+          else
+            echo "$$(date): BACKUP FAILED -- $$(cat /tmp/pg_backup_err)" >&2
+          fi
+          find /backups -name "*.dump" -mtime +30 -delete 2>/dev/null
+        done
+
+networks:
+  collab_network:
+    driver: bridge
+
+volumes:
+  caddy_data:
+    name: collab_caddy_data
+  caddy_config:
+    name: collab_caddy_config
+  backup_data:
+    name: collab_backup_data

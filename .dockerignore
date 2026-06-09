@@ -1,0 +1,53 @@
+# Dependencies
+**/node_modules
+**/.pnpm-store
+
+# Build outputs
+**/dist
+**/dist-ssr
+**/build
+**/coverage
+
+# Git
+**/.git
+**/.gitignore
+**/.gitattributes
+
+# IDE
+**/.vscode
+**/.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Local dev artifacts
+certs/
+reports/
+data/
+
+# Test artifacts
+**/test-results
+**/playwright-report
+
+# Logs
+*.log
+
+# Documentation (not needed in Docker images)
+README.md
+CHANGELOG.md
+LICENSE
+
+# Claude Code
+.claude
+
+# Dev configs
+docker-compose*.yml
+.husky

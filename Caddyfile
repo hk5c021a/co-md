@@ -1,0 +1,64 @@
+# Caddy reverse proxy — auto HTTPS via Let's Encrypt
+# Replace example.com with your domain before deploying.
+
+{
+	# Let's Encrypt certificate notification email
+	email {$ACME_EMAIL}
+	# Server-level timeouts
+	servers {
+		timeouts {
+			read_body 30s
+			read_header 10s
+			write 30s
+			idle 5m
+		}
+	}
+}
+
+{$DOMAIN:localhost} {
+	tls /certs/cert.pem /certs/key.pem
+	# Access logging (JSON format for structured log ingestion)
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 50mb
+			roll_keep 5
+		}
+		format json
+	}
+
+	# Security headers
+	header {
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		Cross-Origin-Opener-Policy "same-origin"
+		Cross-Origin-Embedder-Policy "credentialless"
+		-Server
+	}
+
+	# API — backend
+	handle /api/* {
+		request_body max_size 11MB
+		reverse_proxy backend:3000 {
+			header_up Host {upstream_hostport}
+			header_up X-Forwarded-For {remote_host}
+		}
+	}
+
+	# WebSocket — collaboration server (strips /ws-server prefix before upstream)
+	handle_path /ws-server/* {
+		reverse_proxy ws-server:4000 {
+			header_up Host {upstream_hostport}
+			header_up X-Forwarded-For {remote_host}
+		}
+	}
+
+	# Frontend (static files + SPA served by backend)
+	handle {
+		reverse_proxy backend:3000 {
+			header_up Host {upstream_hostport}
+		}
+	}
+}

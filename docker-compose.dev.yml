@@ -1,0 +1,37 @@
+# Development environment override
+# Usage: docker compose --env-file .env.dev.local -f docker-compose.yml -f docker-compose.dev.yml up -d
+#
+# Opens all service ports to host for direct access during development.
+
+services:
+  postgres:
+    ports:
+      - '${POSTGRES_PORT:-5433}:5432'
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-collab_db}
+
+  redis:
+    ports:
+      - '${REDIS_PORT:-6379}:6379'
+    volumes:
+      - ./data/redis:/data
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+
+  mailpit:
+    image: axllent/mailpit:v1.22
+    ports:
+      - '1025:1025'
+      - '8025:8025'
+
+  rustfs:
+    ports:
+      - '${RUSTFS_PORT:-9000}:9000'
+    environment:
+      RUSTFS_USER: ${RUSTFS_USER:?RUSTFS_USER is required}
+      RUSTFS_PASSWORD: ${RUSTFS_PASSWORD:?RUSTFS_PASSWORD is required}
+    volumes:
+      - ./data/rustfs:/data

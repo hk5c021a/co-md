@@ -1,0 +1,70 @@
+# Test environment - isolated from development
+# Usage: docker compose -f docker-compose.test.yml up -d
+# Cleanup: docker compose -f docker-compose.test.yml down -v --rmi local
+
+services:
+  postgres_test:
+    image: postgres:16-alpine
+    container_name: collab_test_postgres
+    environment:
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_password
+      POSTGRES_DB: collab_test_db
+    ports:
+      - '5434:5432'
+    volumes:
+      - test_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U test_user']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - test_network
+
+  redis_test:
+    image: redis:7-alpine
+    container_name: collab_test_redis
+    ports:
+      - '6380:6379'
+    volumes:
+      - test_redis_data:/data
+    command: redis-server --appendonly yes --requirepass test_redis_password
+    healthcheck:
+      test: ['CMD', 'redis-cli', '-a', 'test_redis_password', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - test_network
+
+  rustfs_test:
+    image: rustfs/rustfs:0.4.1
+    container_name: collab_test_rustfs
+    ports:
+      - '9001:9000'
+    environment:
+      RUSTFS_USER: testadmin
+      RUSTFS_PASSWORD: testpassword
+    volumes:
+      - test_rustfs_data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -f http://localhost:9000/health || exit 1']
+      interval: 10s
+      timeout: 10s
+      retries: 3
+    networks:
+      - test_network
+
+networks:
+  test_network:
+    driver: bridge
+
+volumes:
+  test_postgres_data:
+    name: collab_test_postgres_data
+  test_redis_data:
+    name: collab_test_redis_data
+  test_rustfs_data:
+    name: collab_test_rustfs_data
