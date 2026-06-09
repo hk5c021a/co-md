@@ -1,0 +1,63 @@
+name: E2E Tests
+# End-to-end 测试工作流，使用 Playwright 运行。
+# 支持手动触发和定时自动触发。
+# 需要已运行的生产级后端（含所有服务）。
+# 手动触发：Actions 标签页 → workflow_dispatch。
+
+on:
+  workflow_dispatch:
+    inputs:
+      base-url:
+        description: 'Base URL for E2E tests'
+        required: false
+        default: 'https://localhost'
+      browser:
+        description: 'Browser to test (chromium, firefox, webkit, all)'
+        required: false
+        default: 'chromium'
+  schedule:
+    # 每天 UTC 02:00（北京时间约 10:00）自动运行
+    - cron: '0 2 * * *'
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps ${{ github.event.inputs.browser || github.event.schedule && 'chromium' || 'chromium' }}
+
+      - name: Run E2E tests
+        run: |
+          cd apps/frontend
+          npx playwright test \
+            --config=e2e/playwright.config.ts \
+            --project=${{ github.event.inputs.browser || 'chromium' }}
+        env:
+          BASE_URL: ${{ github.event.inputs.base-url || 'https://localhost' }}
+          NODE_TLS_REJECT_UNAUTHORIZED: '0'
+
+      - name: Upload E2E report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report
+          path: |
+            apps/frontend/e2e/playwright-report/
+            apps/frontend/e2e/test-results/
+          retention-days: 7
