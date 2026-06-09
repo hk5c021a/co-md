@@ -1,0 +1,27 @@
+{
+  "name": "collab-markdown",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev": "pnpm -r --parallel dev",
+    "typecheck": "pnpm -r typecheck",
+    "db:push": "pnpm --filter @collab/backend db:push"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "@vitejs/plugin-react": "^4.7.0",
+    "@vitest/ui": "^4.1.4",
+    "eslint": "^9.0.0",
+    "jsdom": "^29.0.2",
+    "playwright": "^1.60.0",
+    "prettier": "^3.3.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.4"
+  }
+}
