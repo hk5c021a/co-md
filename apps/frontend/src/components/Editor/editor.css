@@ -1,0 +1,151 @@
+/* ── Milkdown editor full-height ── */
+.milkdown-editor {
+  background-color: #f1f5f4;
+}
+.dark .milkdown-editor {
+  background-color: #18181b;
+}
+
+.milkdown-editor [data-milkdown-root] {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.milkdown-editor [data-milkdown-root] .milkdown {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.milkdown-editor [data-milkdown-root] .editor {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.milkdown-editor [data-milkdown-root] .ProseMirror {
+  min-height: 100%;
+  outline: none;
+  padding: 48px 100px;
+}
+.milkdown-editor [data-milkdown-root] .ProseMirror:last-child {
+  margin-bottom: 0;
+}
+
+/* ── CodeMirror light-mode overrides ── */
+.milkdown-code-block .cm-editor {
+  color: #0a0a0a;
+  background: #fafafa;
+}
+.milkdown-code-block .cm-editor .cm-gutters {
+  background: #fafafa;
+  color: #9c9c9c;
+  border-right-color: #e8e8ec;
+}
+.milkdown-code-block .cm-editor .cm-activeLineGutter {
+  background: #f4f4f5;
+  color: #6b6b6b;
+}
+.milkdown-code-block .cm-editor .cm-activeLine {
+  background: rgba(15, 118, 110, 0.06);
+}
+.milkdown-code-block .cm-editor .cm-cursor {
+  border-left-color: #0f766e;
+}
+.milkdown-code-block .cm-editor .cm-selectionBackground,
+.milkdown-code-block .cm-editor .cm-selectionLayer .cm-selectionBackground,
+.milkdown-code-block .cm-editor ::selection {
+  background: rgba(15, 118, 110, 0.18);
+}
+
+/* ── Dark mode CodeMirror ── */
+.dark .milkdown-code-block .cm-editor {
+  color: #d4d4d8;
+  background: #18181b;
+}
+.dark .milkdown-code-block .cm-editor .cm-gutters {
+  background: #18181b;
+  color: #71717a;
+  border-right-color: #27272a;
+}
+.dark .milkdown-code-block .cm-editor .cm-activeLineGutter {
+  background: #27272a;
+  color: #a1a1aa;
+}
+.dark .milkdown-code-block .cm-editor .cm-activeLine {
+  background: rgba(15, 118, 110, 0.08);
+}
+.dark .milkdown-code-block .cm-editor .cm-cursor {
+  border-left-color: #2dd4bf;
+}
+
+/* ── Collaborative cursor decorations ── */
+.ProseMirror-yjs-cursor {
+  position: relative;
+  border-left: 1.5px solid;
+  border-right: 1.5px solid;
+  margin-left: -1.5px;
+  margin-right: -1.5px;
+  pointer-events: none;
+  word-break: normal;
+  height: 1.4em;
+  display: inline-block;
+  vertical-align: text-bottom;
+}
+.ProseMirror-yjs-cursor > div {
+  position: absolute;
+  top: -1.2em;
+  left: -4px;
+  font-size: 12px;
+  padding: 1px 5px;
+  border-radius: 3px 3px 3px 0;
+  white-space: nowrap;
+  color: white;
+  font-weight: 500;
+  line-height: 1.4;
+  pointer-events: none;
+  user-select: none;
+}
+.ProseMirror-yjs-selection {
+  pointer-events: none;
+}
+
+/* ── Milkdown Crepe light mode ── */
+.milkdown-editor .milkdown {
+  --crepe-color-background: #f1f5f4;
+  --crepe-color-on-background: #0a0a0a;
+  --crepe-color-surface: #e8edeb;
+  --crepe-color-surface-low: #f1f5f4;
+  --crepe-color-on-surface: #0a0a0a;
+  --crepe-color-on-surface-variant: #6b6b6b;
+  --crepe-color-outline: #63706d;
+  --crepe-color-primary: #0f766e;
+  --crepe-color-secondary: #ccfbf1;
+  --crepe-color-on-secondary: #0f766e;
+  --crepe-color-inverse: #134e4a;
+  --crepe-color-on-inverse: #f0fdfa;
+  --crepe-color-inline-code: #ef4444;
+  --crepe-color-error: #ef4444;
+  --crepe-color-hover: #e8edeb;
+  --crepe-color-selected: #dde4e1;
+  --crepe-color-inline-area: #ccfbf1;
+}
+
+/* ── Milkdown Crepe dark mode ── */
+.dark .milkdown-editor .milkdown {
+  --crepe-color-background: #18181b;
+  --crepe-color-on-background: #d4d4d8;
+  --crepe-color-surface: #27272a;
+  --crepe-color-surface-low: #18181b;
+  --crepe-color-on-surface: #d4d4d8;
+  --crepe-color-on-surface-variant: #a1a1aa;
+  --crepe-color-outline: #71717a;
+  --crepe-color-primary: #2dd4bf;
+  --crepe-color-secondary: #3f3f46;
+  --crepe-color-on-secondary: #d4d4d8;
+  --crepe-color-inverse: #fafafa;
+  --crepe-color-on-inverse: #27272a;
+  --crepe-color-inline-code: #ef4444;
+  --crepe-color-error: #ef4444;
+  --crepe-color-hover: #27272a;
+  --crepe-color-selected: #3f3f46;
+  --crepe-color-inline-area: #3f3f46;
+}
