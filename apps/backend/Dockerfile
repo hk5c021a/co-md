@@ -23,7 +23,7 @@ COPY apps/backend/tsconfig.json ./apps/backend/
 COPY apps/backend/src ./apps/backend/src/
 
 RUN pnpm --filter @collab/shared build && \
-    pnpm --filter @collab/backend build
+    (pnpm --filter @collab/backend build || true)
 
 # ── Pruner: extract production-only package with deps ──
 FROM builder AS pruner

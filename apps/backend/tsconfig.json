@@ -4,16 +4,13 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
-    "noEmit": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "verbatimModuleSyntax": true,
-    "paths": {
-      "@collab/shared": ["../packages/shared/src/index.ts"],
-      "@collab/shared/*": ["../packages/shared/src/*"]
-    }
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "sourceMap": true
   },
   "include": ["src/**/*"]
 }
