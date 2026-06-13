@@ -50,6 +50,16 @@ pnpm --filter @collab/frontend dev
 | WS | wss://localhost:4000 |
 | Mailpit | http://localhost:8025 |
 
+## 生产部署
+
+```bash
+cp .env.prod.local.example .env.prod.local   # 编辑填入真实值
+mkcert -key-file certs/key.pem -cert-file certs/cert.pem localhost 127.0.0.1 ::1
+cd apps/frontend && npx vite build && cd ../..
+docker compose --env-file .env.prod.local -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.local.yml up -d --build
+```
+生产模式通过 Caddy 反向代理，前端 → `https://localhost`，Mailpit → `http://localhost:8025`。
+
 ## 安全
 
 - **认证**: PBKDF2 (600K) → CAPTCHA → bcrypt → JWT + Refresh Token
@@ -67,8 +77,17 @@ apps/frontend/    # React SPA + PWA
 apps/ws-server/   # Yjs WSS server
 packages/shared/  # validators / entities / i18n
 packages/ui/      # UI 组件
-certs/            # mkcert TLS 证书
+certs/            # TLS 证书（不提交）+ mkcert 指引
 specs/            # 功能规格文档
+docker-compose.local.yml  # 本地生产测试配置
+```
+
+## 测试
+
+```bash
+pnpm -r --parallel test            # 全部 455 单元测试
+cd apps/frontend && npx playwright test --config=e2e/playwright.config.ts  # E2E (3 browsers)
+npx tsx e2e/lighthouse.test.ts     # Lighthouse (Perf 74 / A11y 100 / BP 100 / SEO 92)
 ```
 
 ## 开发命令
@@ -77,4 +96,5 @@ specs/            # 功能规格文档
 pnpm typecheck                    # TS 类型检查
 pnpm --filter @collab/shared test # 单元测试
 DATABASE_URL=... pnpm db:push     # DB schema 同步
+.\scripts\migrate-prod.ps1        # 生产 DB 迁移
 ```

@@ -17,7 +17,32 @@ Caddy terminates TLS and proxies all traffic. The backend serves both API and SP
 - A public domain name pointing to the server IP
 - Ports 80 and 443 open on the firewall
 
-## Quick Start
+## Local Production Testing
+
+For local testing without a public domain, use `docker-compose.local.yml` which adds mailpit for SMTP:
+
+```bash
+cp .env.prod.local.example .env.prod.local
+# Edit .env.prod.local — set DOMAIN=localhost, replace all CHANGE_ME placeholders
+# SMTP_HOST=mailpit, SMTP_PORT=1025 (mailpit is added by docker-compose.local.yml)
+
+mkcert -install
+mkcert -key-file certs/key.pem -cert-file certs/cert.pem localhost 127.0.0.1 ::1
+
+cd apps/frontend && npx vite build && cd ../..
+
+docker compose --env-file .env.prod.local \
+  -f docker-compose.yml \
+  -f docker-compose.prod.yml \
+  -f docker-compose.local.yml \
+  up -d --build
+
+# Caddy uses mkcert certs: tls /certs/cert.pem /certs/key.pem
+# Access: https://localhost
+# Mailpit UI: http://localhost:8025
+```
+
+## Quick Start (Production)
 
 ```bash
 # 1. Set environment variables
@@ -27,11 +52,14 @@ cp .env.example .env.prod.local
 # 2. Build and start
 docker compose --env-file .env.prod.local -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 
-# 3. Run database migrations (or db:push for first deploy)
-docker compose --env-file .env.prod.local -f docker-compose.yml -f docker-compose.prod.yml exec backend pnpm db:migrate
+# 3. Run database migrations from HOST (drizzle-kit is stripped from production image)
+# On Linux/macOS:
+DATABASE_URL=postgresql://<user>:<pass>@localhost:5432/<db> npx drizzle-kit push
+# On Windows PowerShell:
+.\scripts\migrate-prod.ps1
 
 # 4. Verify
-curl https://your-domain.com/health
+curl -k https://localhost/health
 ```
 
 ## Environment Variables
@@ -105,6 +133,16 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T postgres
 
 - `/health` — liveness check (all services)
 - `/metrics` — Prometheus metrics (backend only)
+- Lighthouse: `cd apps/frontend && npx tsx e2e/lighthouse.test.ts` (Perf 74 / A11y 100 / BP 100 / SEO 92)
+
+## Testing
+
+```bash
+pnpm -r --parallel test              # 455 unit tests
+cd apps/frontend && npx playwright test --config=e2e/playwright.config.ts  # 69 E2E (3 browsers)
+cd apps/frontend && npx tsx e2e/lighthouse.test.ts  # Lighthouse audit
+.\scripts\migrate-prod.ps1            # DB migration (from host)
+```
 
 ## Service Ports (Internal)
 
@@ -121,6 +159,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T postgres
 
 ```bash
 git pull
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
-docker compose -f docker-compose.yml -f docker-compose.prod.yml exec backend pnpm db:push
+docker compose --env-file .env.prod.local -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# Run DB migration from host (drizzle-kit is stripped from prod image)
+.\scripts\migrate-prod.ps1
 ```
