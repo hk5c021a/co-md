@@ -23,9 +23,16 @@ services:
 
   mailpit:
     image: axllent/mailpit:v1.22
+    container_name: collab_mailpit_dev
     ports:
       - '1025:1025'
       - '8025:8025'
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '--spider', 'http://localhost:8025/api/v1/messages?limit=1']
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
 
   rustfs:
     ports:

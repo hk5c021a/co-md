@@ -4,12 +4,13 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
-    "noEmit": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "verbatimModuleSyntax": true
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "sourceMap": true
   },
   "include": ["src/**/*"]
 }

@@ -28,7 +28,15 @@ RUN pnpm --filter @collab/shared build && \
 # ── Pruner: extract production-only package with deps ──
 FROM builder AS pruner
 
-RUN pnpm --filter @collab/backend deploy --prod --legacy /pruned
+RUN pnpm --filter @collab/backend deploy --prod --legacy /pruned && \
+    # Remove build artifacts not needed at runtime
+    find /pruned -name "*.map" -delete && \
+    find /pruned -name "*.tsbuildinfo" -delete && \
+    find /pruned -name "*.md" -delete 2>/dev/null; true && \
+    find /pruned -name "LICENSE" -delete 2>/dev/null; true && \
+    find /pruned/node_modules -type d -name "test*" -exec rm -rf {} + 2>/dev/null; true && \
+    find /pruned/node_modules -type d -name "docs" -exec rm -rf {} + 2>/dev/null; true && \
+    find /pruned/node_modules -type d -name "examples" -exec rm -rf {} + 2>/dev/null; true
 
 # NOTE: Frontend files are served by the backend via serveStatic (see index.ts).
 # In production, mount apps/frontend/dist into /app/frontend/dist or use the

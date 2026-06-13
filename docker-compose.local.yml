@@ -1,0 +1,18 @@
+# Local production testing override — adds mailpit for SMTP
+# Usage: docker compose --env-file .env.prod.local -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.local.yml up -d
+
+services:
+  mailpit:
+    image: axllent/mailpit:v1.22
+    container_name: collab_mailpit
+    ports:
+      - '8025:8025'  # Web UI
+      - '1025:1025'  # SMTP (for backend)
+    networks:
+      - collab_network
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '--spider', 'http://localhost:8025/api/v1/messages?limit=1']
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped

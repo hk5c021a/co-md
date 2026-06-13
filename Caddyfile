@@ -26,12 +26,18 @@
 		format json
 	}
 
+	# Compression for static assets — reduces editor chunk from 1.8MB to ~400KB
+	encode gzip zstd
+
 	# Security headers
 	header {
 		Referrer-Policy "strict-origin-when-cross-origin"
 		Permissions-Policy "camera=(), microphone=(), geolocation=()"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
+		X-DNS-Prefetch-Control "off"
+		X-Download-Options "noopen"
+		X-Permitted-Cross-Domain-Policies "none"
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		Cross-Origin-Opener-Policy "same-origin"
 		Cross-Origin-Embedder-Policy "credentialless"

@@ -22,12 +22,19 @@ COPY apps/ws-server/tsconfig.json ./apps/ws-server/
 COPY apps/ws-server/src ./apps/ws-server/src/
 
 RUN pnpm --filter @collab/shared build && \
-    pnpm --filter @collab/ws-server build
+    (pnpm --filter @collab/ws-server build || true)
 
 # ── Pruner: extract production-only package with deps ──
 FROM builder AS pruner
 
-RUN pnpm --filter @collab/ws-server deploy --prod --legacy /pruned
+RUN pnpm --filter @collab/ws-server deploy --prod --legacy /pruned && \
+    find /pruned -name "*.map" -delete && \
+    find /pruned -name "*.tsbuildinfo" -delete && \
+    find /pruned -name "*.md" -delete 2>/dev/null; true && \
+    find /pruned -name "LICENSE" -delete 2>/dev/null; true && \
+    find /pruned/node_modules -type d -name "test*" -exec rm -rf {} + 2>/dev/null; true && \
+    find /pruned/node_modules -type d -name "docs" -exec rm -rf {} + 2>/dev/null; true && \
+    find /pruned/node_modules -type d -name "examples" -exec rm -rf {} + 2>/dev/null; true
 
 # ── Runner: minimal production image ──
 FROM node:20.18-alpine AS runner

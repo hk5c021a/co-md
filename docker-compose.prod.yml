@@ -44,13 +44,16 @@ services:
       - no-new-privileges:true
     ulimits:
       nofile: { soft: 65536, hard: 65536 }
-    # Resource limits for docker compose (non-Swarm) — deploy.resources is Swarm-only
-    mem_limit: 128M
-    mem_reservation: 64M
+    # Resource limits for docker compose (non-Swarm).
+    # Increased memory for gzip/zstd compression of static assets.
+    mem_limit: 256M
+    mem_reservation: 128M
     cpus: 0.5
 
   postgres:
     ports: [] # Close external port from dev compose
+    networks:
+      - collab_network
     restart: always
     stop_grace_period: 120s
     shm_size: '256m'
@@ -73,6 +76,8 @@ services:
 
   redis:
     ports: [] # Close external port from dev compose
+    networks:
+      - collab_network
     restart: always
     stop_grace_period: 30s
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
@@ -83,13 +88,16 @@ services:
       - no-new-privileges:true
     ulimits:
       nofile: { soft: 65536, hard: 65536 }
-    mem_limit: 256M
-    mem_reservation: 128M
-    cpus: 0.5
+    mem_limit: 1G
+    mem_reservation: 512M
+    cpus: 1
 
   rustfs:
     ports: [] # Close external port from dev compose
+    networks:
+      - collab_network
     restart: always
+    stop_grace_period: 30s
     environment:
       RUSTFS_USER: ${RUSTFS_USER:?RUSTFS_USER is required}
       RUSTFS_PASSWORD: ${RUSTFS_PASSWORD:?RUSTFS_PASSWORD is required}
@@ -100,9 +108,9 @@ services:
       - no-new-privileges:true
     ulimits:
       nofile: { soft: 65536, hard: 65536 }
-    mem_limit: 256M
-    mem_reservation: 128M
-    cpus: 0.5
+    mem_limit: 1G
+    mem_reservation: 512M
+    cpus: 1
 
   # Removed: mailpit (not used in production — real SMTP via SMTP_* env vars)
 
@@ -137,6 +145,7 @@ services:
       MIGRATE_ON_STARTUP: 'true'
       VITE_DEV: 'false'
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      ALLOW_DEV_ENDPOINTS: ${ALLOW_DEV_ENDPOINTS:-false}
     depends_on:
       postgres:
         condition: service_healthy
