@@ -53,7 +53,7 @@ export async function authMiddleware(c: Context, next: Next) {
   }
 }
 
-export async function signAccessToken(userId: string): Promise<string> {
+export async function signAccessToken(userId: string, sessionId?: string): Promise<string> {
   const jwt = await new jose.SignJWT({ sub: userId, type: 'access' })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
@@ -113,7 +113,7 @@ export interface BindingFingerprint {
 }
 
 export function validateBinding(
-  stored: { bindingPlatform: string; bindingCores: number },
+  stored: { bindingPlatform: string | null; bindingCores: number | null },
   fingerprint: BindingFingerprint
 ): boolean {
   if (stored.bindingPlatform !== fingerprint.platform) return false;

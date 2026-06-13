@@ -6,6 +6,13 @@ import type { Context, Next } from 'hono';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
+// Paths exempt from CSRF — these endpoints receive requests without Origin headers:
+// - CSP reports are sent natively by browsers
+// - Internal API is called service-to-service
+// - Dev token endpoint (E2E tests, disabled in production by ALLOW_DEV_ENDPOINTS)
+// Anchored to path boundary to prevent prefix-matching false positives.
+const CSRF_EXEMPT_REGEX = /^\/api\/(?:csp-report|internal|auth\/password-reset\/dev-get-token)(?:\/|\?|$)/;
+
 function normalizeOrigin(url: string): string {
   try {
     const u = new URL(url);
@@ -16,6 +23,11 @@ function normalizeOrigin(url: string): string {
 }
 
 export async function csrfMiddleware(c: Context, next: Next) {
+  // Exempt paths that legitimately receive requests without Origin headers
+  if (CSRF_EXEMPT_REGEX.test(c.req.path)) {
+    return next();
+  }
+
   if (SAFE_METHODS.has(c.req.method)) {
     return next();
   }

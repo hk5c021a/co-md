@@ -32,7 +32,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 async function serveIndexWithNonce(c: Context) {
-  const filePath = resolve(__dirname, '../../frontend/dist', 'index.html');
+  const filePath = resolve(__dirname, '../frontend/dist', 'index.html');
   let html = await readFile(filePath, 'utf-8');
   const nonce = c.get('cspNonce') || '';
   html = html.replace(/__CSP_NONCE__/g, nonce);
@@ -57,9 +57,14 @@ app.use('*', bodyLimitMiddleware());
 app.use('*', cspMiddleware);
 app.use('*', csrfMiddleware);
 
-// Rate limit auth endpoints
+// Rate limit auth state-changing endpoints (login, register, password-reset).
+// Excludes read-only endpoints (captcha, salt) which are called frequently.
 const authLimit = rateLimitMiddleware({ maxRequests: 30, windowSeconds: 60 });
-app.use('/api/auth/*', authLimit);
+app.use('/api/auth/register', authLimit);
+app.use('/api/auth/login', authLimit);
+app.use('/api/auth/refresh', authLimit);
+app.use('/api/auth/logout', authLimit);
+app.use('/api/auth/password-reset/*', authLimit);
 
 // Routes
 app.route('/api/csp-report', cspReportRoute);
@@ -84,19 +89,45 @@ app.get('/health', async (c) => {
 });
 
 const isDev = process.env.VITE_DEV === 'true';
-const frontendDist = resolve(__dirname, '../../frontend/dist');
+const frontendDist = resolve(__dirname, '../frontend/dist');
 
 if (!isDev) {
   logger.info('PROD mode: serving static from dist');
-  app.get('/', (c: Context) => serveIndexWithNonce(c));
+  app.get('/', async (c: Context) => {
+    c.header('Cache-Control', 'no-cache, must-revalidate');
+    return serveIndexWithNonce(c);
+  });
   app.use('*', serveStatic({ root: frontendDist }));
   app.notFound(async (c) => {
-    if (c.req.method === 'GET' && !c.req.path.startsWith('/api/')) {
-      const path = c.req.path;
+    const path = c.req.path;
+    if (c.req.method === 'GET' && !path.startsWith('/api/')) {
       const isAsset = /\.[a-z0-9]{2,6}$/i.test(path);
-      if (!isAsset) return serveIndexWithNonce(c);
+      if (!isAsset) {
+        c.header('Cache-Control', 'no-cache, must-revalidate');
+        return serveIndexWithNonce(c);
+      }
     }
-    return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Not found' } }, 404);
+    // API path — return consistent JSON error
+    if (path.startsWith('/api/')) {
+      c.status(404);
+      return c.json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Endpoint not found' },
+      });
+    }
+    // Missing static asset — return 404 with the correctly-typed body
+    // so browsers don't log misleading MIME-type warnings
+    const extMimes: Record<string, string> = {
+      '.css': 'text/css', '.js': 'text/javascript', '.mjs': 'text/javascript',
+      '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf',
+      '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon',
+      '.webmanifest': 'application/manifest+json', '.xml': 'application/xml',
+      '.json': 'application/json', '.html': 'text/html', '.txt': 'text/plain',
+    };
+    const ext = path.match(/\.[a-z0-9]+$/i)?.[0]?.toLowerCase() || '';
+    c.status(404);
+    c.header('Content-Type', extMimes[ext] || 'text/plain');
+    return c.body('');
   });
 } else {
   logger.info('DEV mode: proxy to Vite');
@@ -115,6 +146,18 @@ function getTlsOptions() {
   }
   return null;
 }
+
+// ── Global error handlers ──
+// Uncaught exceptions leave the process in an undefined state — log and exit.
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Uncaught exception:', err);
+  process.exit(1);
+});
+
+// Unhandled promise rejections — log but don't crash (Node warns by default).
+process.on('unhandledRejection', (reason) => {
+  console.error('[FATAL] Unhandled rejection:', reason);
+});
 
 async function start() {
   await connectRedis();

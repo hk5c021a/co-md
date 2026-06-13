@@ -1,6 +1,69 @@
 import type { Context, Next } from 'hono';
 import { randomBytes } from 'node:crypto';
 
+// ── Precomputed CSP style hashes for y-prosemirror cursor plugin ──
+// y-prosemirror uses `setAttribute('style', ...)` to render remote user cursors
+// and labels with dynamic colors. Since these are inline style attributes without
+// a nonce, CSP requires either 'unsafe-inline' (too broad) or per-value hashes
+// with 'unsafe-hashes'. The 8 user colors produce 24 unique style strings
+// (3 patterns per color: border-color, background-color label, background-color selection).
+// Hash values are precomputed at build time to avoid runtime crypto in ES modules.
+const CURSOR_STYLE_HASHES = [
+  // border-color: #4338CA
+  "'sha256-i99pttV5zIH+xhyARqvUGVh4rGEGrY6gtsnPnZBwZx0='",
+  // background-color: #4338CA
+  "'sha256-9mh+x9LkgNUkRSZ6aI2/L2Jc5L+KogLIStlfjC6fkbU='",
+  // background-color: #4338CA70
+  "'sha256-oHjyeFXyjPR8mCRQRtaB9UGE97//j4x4xxu5DdKNvZc='",
+  // border-color: #047857
+  "'sha256-LGiBui4vgd3Il3Xdk9KKTX1PgrFv+XlyisqksUQbjBE='",
+  // background-color: #047857
+  "'sha256-xSPFkMoAk6QiXkFs+S3GWmSX0w7z1gFytes6x8GQJXs='",
+  // background-color: #04785770
+  "'sha256-ECUACziLHcvec6ooWfh+mXt2Agoyz0Kg15MKUIVo4so='",
+  // border-color: #B45309
+  "'sha256-Zxv7qoUSTqqkC06VmWUU+YG18MKPBqN3kUgTr+3L/+w='",
+  // background-color: #B45309
+  "'sha256-xGDZJU/M0oMrQ64AV94pSHXUouov5jkalHgnwIj8/fM='",
+  // background-color: #B4530970
+  "'sha256-LY1oAlhq+wKV5i3Ksf/nq5uj/dKN/vdWe3wIt4OV+Xc='",
+  // border-color: #DC2626
+  "'sha256-XNBp7aT093UQeVWAO4QWbzkvqUKHSug09eGWzLQq3zg='",
+  // background-color: #DC2626
+  "'sha256-QrX6Wq0zkJaY/fxX7DBkfDqJHXcdrKb/V9Df3SUby7I='",
+  // background-color: #DC262670
+  "'sha256-oVu9Mh5WkUvqzBjjnJosMS5zhrHKevuda55viL2YWGw='",
+  // border-color: #6D28D9
+  "'sha256-uY+Pw8HvQE+QDTrkPVATt6JTxjuuH9AxyiS9eELbSPA='",
+  // background-color: #6D28D9
+  "'sha256-u826ycekfKzEWjCEGa8mKogYeIvi6e7O+ZGqW7Guj4I='",
+  // background-color: #6D28D970
+  "'sha256-dniWDVPu0N7iKMPXxInB2gkC6xBwuqZtxTrpuG712IU='",
+  // border-color: #BE185D
+  "'sha256-svmJzWproP2MpyKJPGgqFPFiCVU0a/lYhqOUMF+INjo='",
+  // background-color: #BE185D
+  "'sha256-9xmS9Ul6icRwcgOcCTUH7y7585PMkpCwZeSMlt2/bfQ='",
+  // background-color: #BE185D70
+  "'sha256-/nPpE7dTJUFDDnuF8Mg4ac75DP1NJIrDe3aZNNnFOY4='",
+  // border-color: #0E7490
+  "'sha256-sECe0R8w2zaJKDUwrAxEuS4Bgr4pUm9S9Yt7Zhr196E='",
+  // background-color: #0E7490
+  "'sha256-9/uOd54YjJ3l4FpkHvdjv4u/WFmRZtcPfDzUyj8Jj7Q='",
+  // background-color: #0E749070
+  "'sha256-N/am8YRJDoMJQnorhaCnA3bprFGRcuEpu5nrzAhPVHs='",
+  // border-color: #C2410C
+  "'sha256-LSkn62f7MmPW7HHimK9nT2rparFQHYJ+mEbBesgzBLw='",
+  // background-color: #C2410C
+  "'sha256-V7fXaHY4ij7I0Yvr25pj2dC1JE1ZDqpmcB5Q0foX1Os='",
+  // background-color: #C2410C70
+  "'sha256-xizZ/X5aYjMAinvOYr3c018k4cjDRshR0YEYUAd0+zM='",
+].join(' ');
+
+// Additional style hashes for library-generated inline styles (reported by CSP violations).
+const EXTRA_STYLE_HASHES = [
+  "'sha256-wdLfdghwESlL+W6Yha9Pg7mYA+KmnhHG3kBIhYfhJrc='",
+].join(' ');
+
 // CSP nonce middleware — generates per-request nonce, injects CSP headers,
 // and passes the nonce to downstream handlers via c.get('cspNonce').
 // NOTE: nonce is generated per-request including API calls (16 bytes CSPRNG).
@@ -22,8 +85,10 @@ export async function cspMiddleware(c: Context, next: Next) {
       "default-src 'none'",
       isDev
         ? `script-src 'self' 'unsafe-inline' 'unsafe-eval'`
-        : `script-src 'self' 'nonce-${nonce}' 'wasm-unsafe-eval' 'sha256-5GXPmn+K84I9yGQUsBl7Jci5u/WMLLvvjQp8SQskJps=' 'sha256-YCEeXWoDZ89UzVF7tRjMEo3CaiiIiUS8cDya/j3EJ/8='`,
-      isDev ? `style-src 'self' 'unsafe-inline'` : `style-src 'self' 'nonce-${nonce}'`,
+        : `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'wasm-unsafe-eval' 'sha256-5GXPmn+K84I9yGQUsBl7Jci5u/WMLLvvjQp8SQskJps=' 'sha256-YCEeXWoDZ89UzVF7tRjMEo3CaiiIiUS8cDya/j3EJ/8=' 'sha256-ieoeWczDHkReVBsRBqaal5AFMlBtNjMzgwKvLqi/tSU='`,
+      isDev
+        ? `style-src 'self' 'unsafe-inline'`
+        : `style-src 'self' 'nonce-${nonce}' 'unsafe-hashes' ${CURSOR_STYLE_HASHES} ${EXTRA_STYLE_HASHES}`,
       `font-src 'self' data:`,
       "img-src 'self' data: blob:",
       isDev
@@ -49,8 +114,10 @@ export async function cspMiddleware(c: Context, next: Next) {
     // Reporting API requires absolute URLs — resolve against request origin
     const reportUrl = `${new URL(c.req.url).origin}/api/csp-report`;
     c.res.headers.set('Reporting-Endpoints', `csp-endpoint="${reportUrl}"`);
-    // Prevent CDNs/browsers from caching HTML with embedded CSP nonces
-    c.res.headers.set('Cache-Control', 'no-store');
+    // Must revalidate before reuse (CSP nonce is unique per request).
+    // 'no-cache' allows the browser to store the response for conditional
+    // revalidation but never serves it without checking with the server first.
+    c.res.headers.set('Cache-Control', 'no-cache, must-revalidate');
     // Security headers — also added for API responses below
     c.res.headers.set('Cross-Origin-Opener-Policy', 'same-origin');
     c.res.headers.set('Cross-Origin-Embedder-Policy', 'credentialless');

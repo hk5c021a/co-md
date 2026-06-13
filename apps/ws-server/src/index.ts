@@ -1,5 +1,6 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'node:https';
+import { createServer as createHttpServer } from 'node:http';
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -140,21 +141,29 @@ function getTlsOptions() {
   return null;
 }
 
-const tls = getTlsOptions();
-const server = tls
-  ? createServer(tls, (req, res) => {
-      // Health check
-      if (req.url === '/health') {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 'ok', uptime: process.uptime(), checks: { redis: redis.isOpen ? 'ok' : 'fail' } }));
-        return;
-      }
-      res.writeHead(404);
-      res.end();
-    })
-  : null;
+// HTTP request handler for health checks (served regardless of TLS)
+function requestHandler(req: any, res: any) {
+  if (req.url === '/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      status: 'ok',
+      uptime: process.uptime(),
+      checks: { redis: redis.isOpen ? 'ok' : 'fail' },
+    }));
+    return;
+  }
+  res.writeHead(404);
+  res.end();
+}
 
-const wss = new WebSocketServer(tls ? { server } : { port: WS_PORT });
+// Always create an HTTP server to handle health checks, then attach
+// the WebSocket server on top so both HTTP and WS upgrades work.
+const tls = getTlsOptions();
+const baseServer = tls
+  ? createServer(tls, requestHandler)
+  : createHttpServer(requestHandler);
+
+const wss = new WebSocketServer({ server: baseServer });
 
 wss.on('connection', (ws: WebSocket, req) => {
   const url = new URL(req.url || '/', `http://${req.headers.host}`);
@@ -283,8 +292,17 @@ wss.on('connection', (ws: WebSocket, req) => {
   });
 });
 
-if (tls) {
-  server!.listen(WS_PORT, () => console.log(`[WS] Collaborative server running on wss://localhost:${WS_PORT}`));
-} else {
-  console.log(`[WS] Collaborative server running on ws://localhost:${WS_PORT}`);
-}
+baseServer.listen(WS_PORT, () => {
+  const proto = tls ? 'wss' : 'ws';
+  console.log(`[WS] Collaborative server running on ${proto}://localhost:${WS_PORT}`);
+});
+
+// ── Global error handlers ──
+process.on('uncaughtException', (err) => {
+  console.error('[WS:FATAL] Uncaught exception:', err);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[WS:FATAL] Unhandled rejection:', reason);
+});
