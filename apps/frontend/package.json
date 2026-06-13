@@ -50,17 +50,21 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.10.0",
+    "@playwright/test": "^1.60.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.0",
+    "@voidzero-dev/vite-plus-core": "latest",
     "babel-plugin-react-compiler": "^19.0.0-beta-76276e4-20241101",
     "jsdom": "^29.0.2",
+    "lighthouse": "^13.4.0",
+    "playwright-lighthouse": "^4.0.0",
     "typescript": "^5.7.0",
-    "vitest": "^4.1.4",
-    "@voidzero-dev/vite-plus-core": "latest",
+    "vite-plugin-pwa": "^0.21.0",
     "vite-plus": "^0.1.12",
-    "vite-plugin-pwa": "^0.21.0"
+    "vitest": "^4.1.4"
   }
 }

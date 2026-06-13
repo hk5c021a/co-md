@@ -46,7 +46,6 @@ export function TokenProvider({ children }: { children: ReactNode }) {
       return false;
     } catch (err) {
       // Network error — don't log out if we already have a token
-      // (transient network issues shouldn't force re-login)
       if (tokenStore.accessToken) return true;
       setIsAuthenticated(false);
       return false;
@@ -54,7 +53,6 @@ export function TokenProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshAndCheck = useCallback(async (): Promise<boolean> => {
-    // Worker handles refresh internally via GET_AT
     const at = await tokenStore.getAccessToken();
     if (at) {
       tokenStore.accessToken = at;
@@ -64,7 +62,11 @@ export function TokenProvider({ children }: { children: ReactNode }) {
     return false;
   }, [checkAuth]);
 
-  // Run auth check on mount
+  // Run auth check on mount.
+  // NOTE: The previous React.lazy() + Suspense approach for DocumentEditorPage
+  // caused React error #306 in production builds when a tokenStore Worker
+  // message triggered a state update during a Suspense transition.
+  // Fixed by replacing React.lazy() with manual dynamic import in main.tsx.
   const initAuth = useCallback(async () => {
     const path = window.location.pathname;
     // Always initialise the token worker (key derivation) even on auth pages,
@@ -100,9 +102,6 @@ export function TokenProvider({ children }: { children: ReactNode }) {
   }, [initAuth]);
 
   // ── Cross-tab auth sync ──
-  // Guard to prevent self-broadcast: when this tab initiates a login,
-  // the BroadcastChannel handler must not re-run initAuth (which races
-  // with IndexedDB writes and can reset isAuthenticated).
   const ignoreNextBroadcast = useRef(false);
   useEffect(() => {
     try {
@@ -112,17 +111,12 @@ export function TokenProvider({ children }: { children: ReactNode }) {
           tokenStore.clearAll().catch(() => {});
           setIsAuthenticated(false);
         } else if (e.data?.type === 'token_refreshed') {
-          // Another tab's Worker proactively refreshed its AT.
-          // Update our module-level cache so apiFetch won't hit 401.
           tokenStore.accessToken = e.data.token;
         } else if (e.data === 'login_other') {
           if (ignoreNextBroadcast.current) {
             ignoreNextBroadcast.current = false;
             return;
           }
-          // Another tab just logged in — re-init auth in this tab.
-          // Retry up to 3 times with 200ms delay to wait for IndexedDB writes
-          // from the login tab to complete (avoids reading stale state).
           const tryInit = async (attempts = 0): Promise<void> => {
             try {
               await initAuth();
@@ -142,7 +136,6 @@ export function TokenProvider({ children }: { children: ReactNode }) {
     }
   }, [initAuth]);
 
-  // Reusable post-only BroadcastChannel — avoids leaking instances
   const bcRef = useRef<BroadcastChannel | null>(null);
   const getBC = useCallback(() => {
     if (!bcRef.current) {
@@ -155,7 +148,6 @@ export function TokenProvider({ children }: { children: ReactNode }) {
     return bcRef.current;
   }, []);
 
-  // Set the guard before broadcasting login — exposed via context for useLogin
   const broadcastLogin = useCallback(() => {
     ignoreNextBroadcast.current = true;
     getBC()?.postMessage('login_other');

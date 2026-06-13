@@ -120,7 +120,7 @@ export function UserHomePage() {
   ];
 
   return (
-    <div className="min-h-dvh bg-bg dark:bg-zinc-950">
+    <div className="min-h-dvh bg-bg dark:bg-zinc-950" data-testid="home-page">
       <a href="#main-content" className="skip-to-main">
         {t('common.skipToMain')}
       </a>

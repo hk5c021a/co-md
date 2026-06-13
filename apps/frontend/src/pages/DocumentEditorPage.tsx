@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useParams, useNavigate, Navigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { CollaborativeEditor } from '../components/Editor/Editor';
 import { useToken } from '../hooks/useToken';
 import { useUser } from '../hooks/useApi';
@@ -127,13 +127,10 @@ export function DocumentEditorPage({ fileId: propFileId }: DocumentEditorPagePro
     };
   }, [fileId, isAuthenticated, currentUser?.id]);  // oxlint-disable-line react-hooks/exhaustive-deps — addToast and t are stable
 
-  // Route guard
+  // Auth guard is handled at the router level (main.tsx AuthGuard),
+  // so by the time this component renders, the user is authenticated.
   if (isAuthLoading) {
     return <PageSpinner />;
-  }
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
   }
 
   if (!fileId) {

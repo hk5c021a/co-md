@@ -4,8 +4,55 @@ import { VitePWA } from 'vite-plugin-pwa';
 import tailwindcss from '@tailwindcss/vite';
 import { resolve } from 'node:path';
 
+import type { Plugin } from 'vite';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+
+// NOTE: Frontend dist is ~15MB due to CodeMirror language modes (bundled by
+// Milkdown/Shiki). Shiki v4 bundles all TextMate grammars into a single chunk,
+// and Milkdown's CodeMirror integration adds per-language mode chunks that
+// cannot be safely tree-shaken at build time without breaking lazy-loading.
+//
+// The createHighlighter({ langs: [...] }) call already limits runtime loading,
+// but the bundler must include all possible chunks to satisfy dynamic import().
+// This is a known limitation. See: shiki#778, milkdown#1542.
+
+// ── HTML post-processing: prefetch editor chunk + async SW registration ──
+function htmlPostPlugin(): Plugin {
+  return {
+    name: 'html-post',
+    enforce: 'post',
+    closeBundle() {
+      const distDir = resolve(__dirname, 'dist');
+      const assetsDir = resolve(distDir, 'assets');
+      const indexHtml = resolve(distDir, 'index.html');
+      if (!existsSync(indexHtml)) return;
+      let html = readFileSync(indexHtml, 'utf-8');
+      let changes = 0;
+
+      // 1. Prefetch lazy-loaded editor chunk on idle
+      const files = readdirSync(assetsDir).filter(f => f.endsWith('.js'));
+      const editorChunk = files.find(f => /^DocumentEditorPage-[A-Za-z0-9_]+\.js$/.test(f));
+      if (editorChunk) {
+        html = html.replace('</head>', `\n  <link rel="modulepreload" href="/assets/${editorChunk}">\n</head>`);
+        changes++;
+      }
+
+      // 2. Add async to registerSW.js so it doesn't block the critical path
+      html = html.replace(
+        '<script id="vite-plugin-pwa:register-sw" src="/registerSW.js">',
+        '<script id="vite-plugin-pwa:register-sw" src="/registerSW.js" async>'
+      );
+      changes++;
+
+      writeFileSync(indexHtml, html);
+      console.log(`[html-post] ${changes} optimizations applied (prefetch + async SW)`);
+    },
+  };
+}
+
 export default defineConfig({
   plugins: [
+    htmlPostPlugin(),
     tailwindcss(),
     react(),
     VitePWA({
@@ -32,15 +79,16 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['pwa-*.png', 'favicon-32.png', '*.svg', 'manifest.webmanifest'],
-        // Precache index.html so NavigationRoute can serve SPA fallback.
-        // Contains __CSP_NONCE__ placeholders (replaced by backend at runtime).
-        additionalManifestEntries: [{ url: '/index.html', revision: null }],
+        // IMPORTANT: Do NOT precache index.html or use navigateFallback.
+        // CSP nonce is injected per-request by the backend (serveIndexWithNonce),
+        // and a precached index.html would contain stale __CSP_NONCE__ placeholders
+        // with no nonce on <script> tags. When the SW serves it, the browser blocks
+        // all scripts because 'strict-dynamic' ignores 'self' and requires nonces.
+        // SPA fallback is handled by the backend's notFound middleware instead.
         maximumFileSizeToCacheInBytes: 2 * 1024 * 1024,
-        navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api\//, /^\/ws-server\//],
         cleanupOutdatedCaches: true,
         clientsClaim: true,
-        skipWaiting: false,
+        skipWaiting: true,
         runtimeCaching: [
           // HTML: NetworkOnly (CSP nonce is unique per request)
           { urlPattern: ({ request }) => request.mode === 'navigate', handler: 'NetworkOnly' },
@@ -66,6 +114,18 @@ export default defineConfig({
     __VUE_OPTIONS_API__: 'false',
     __VUE_PROD_DEVTOOLS__: 'false',
     __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: 'false',
+  },
+  // ── Chunk splitting: keep heavy deps out of the main editor chunk ──
+  // Shiki (~600KB) is already split via dynamic import() in Editor.tsx.
+  // Yjs ecosystem (~300KB) is split via manualChunks below.
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-yjs': ['yjs', 'y-indexeddb', 'lib0'],
+        },
+      },
+    },
   },
   optimizeDeps: {
     rolldownOptions: {},

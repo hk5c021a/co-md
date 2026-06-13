@@ -46,32 +46,43 @@ export function EditorErrorBoundary({ children }: { children: React.ReactNode })
 import { Crepe } from '@milkdown/crepe';
 import { collab, collabServiceCtx } from '@milkdown/plugin-collab';
 import { highlight, highlightPluginConfig } from '@milkdown/plugin-highlight';
-import { createParser } from 'prosemirror-highlight/shiki';
 import type { Highlighter } from 'shiki';
-import { createHighlighter } from 'shiki';
-import { replaceAll, getMarkdown } from '@milkdown/utils';
+import { replaceAll } from '@milkdown/utils';
 import { editorViewOptionsCtx, type Editor } from '@milkdown/core';
 
-// ═══ Shiki highlighter (pre-loaded at module init, shared across editors) ═══
+// ═══ Shiki highlighter (lazy-loaded, languages loaded on demand) ═══
+// Shiki v4 bundle-full registers all 200+ languages as lazy () => import(...) getters.
+// We create the highlighter with no preloaded languages, then scan the document
+// for code-fence languages and load only what's actually used.
+// This keeps the initial load lean (~0KB grammars) while supporting any language.
 let _highlighter: Highlighter | null = null;
 let _highlighterPromise: Promise<Highlighter> | null = null;
 function getHighlighter() {
   if (!_highlighterPromise) {
-    _highlighterPromise = createHighlighter({
-      themes: ['nord'],
-      langs: [
-        'javascript', 'typescript', 'jsx', 'tsx',
-        'css', 'html', 'json', 'markdown',
-        'bash', 'python', 'sql', 'yaml', 'diff',
-      ],
-    }).then((h) => {
+    _highlighterPromise = import('shiki').then(({ createHighlighter }) =>
+      createHighlighter({ themes: ['nord'], langs: [] })
+    ).then((h) => {
       _highlighter = h;
       return h;
     });
   }
   return _highlighterPromise;
 }
-// Shiki highlighter is loaded lazily when the editor mounts (avoids eager ~200KB parse on page load)
+
+/** Scan markdown for code-fence languages and load them on demand. */
+let _highlightSetup = false; // guard: only set up highlighting once per editor lifecycle
+
+async function loadDocumentLanguages(hl: Highlighter, markdown: string) {
+  const fenceLangs = new Set<string>();
+  for (const m of markdown.matchAll(/```(\w+)/g)) fenceLangs.add(m[1].toLowerCase());
+  const loaded = new Set(hl.getLoadedLanguages());
+  // Shiki v4: getBundledLanguages() returns Record<string, LanguageInput> (plain object).
+  // Use Object.keys() since plain objects are not iterable.
+  const bundled = new Set(Object.keys(hl.getBundledLanguages?.() ?? {}));
+  const toLoad = [...fenceLangs].filter(l => !loaded.has(l) && bundled.has(l));
+  if (toLoad.length > 0) await hl.loadLanguage(...toLoad);
+  return toLoad.length > 0;
+}
 
 function buildCrepeConfig(t: ReturnType<typeof useTranslation>['t'], documentId: string, readOnly: boolean) {
   // Crepe editor translations — sourced from react-i18next so they stay in sync
@@ -232,22 +243,29 @@ function MilkdownInner({
     (root) => {
       const ro = readOnlyRef.current;
       const crepe = new Crepe({ root, ...buildCrepeConfig(t, documentId, ro) });
-      // Trigger lazy shiki load (module-level eager init removed — saves ~200KB on non-editor pages)
+      // Start shiki lazy-load (no languages preloaded — loaded on demand from doc)
+      _highlightSetup = false;
       if (!ro && !_highlighter) getHighlighter().then((hl) => { _highlighter = hl; });
-      if (_highlighter || ro) {
-        crepe.editor.config((ctx) => {
-          if (_highlighter) {
-            ctx.set(highlightPluginConfig.key, { parser: createParser(_highlighter) });
-          }
-          if (ro) {
-            ctx.set(editorViewOptionsCtx, { editable: () => false });
+
+      crepe.editor.use(collab);
+
+      crepe.on((listener) => {
+        listener.markdownUpdated((_ctx, markdown) => {
+          onMarkdownChangeRef.current?.(markdown);
+          // Load code-fence languages on demand, set up highlighting once
+          if (!ro && _highlighter && !_highlightSetup) {
+            _highlightSetup = true;
+            loadDocumentLanguages(_highlighter, markdown).then(() => {
+              import('prosemirror-highlight/shiki').then(({ createParser }) => {
+                crepe.editor.config((ctx) => {
+                  ctx.set(highlightPluginConfig.key, { parser: createParser(_highlighter!) });
+                });
+                crepe.editor.use(highlight);
+              });
+            });
           }
         });
-      }
-      crepe.editor.use(collab);
-      if (_highlighter) {
-        crepe.editor.use(highlight);
-      }
+      });
       crepe.on((listener) => {
         listener.markdownUpdated((_ctx, markdown) => {
           onMarkdownChangeRef.current?.(markdown);
