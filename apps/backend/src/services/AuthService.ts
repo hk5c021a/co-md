@@ -193,10 +193,10 @@ export class AuthService {
     }
 
     // Check Redis for current family — fallback to DB if evicted
-    let currentFamilyId = (await getRefreshToken(userId, sessionId))?.familyId;
+    let currentFamilyId: string | null = (await getRefreshToken(userId, sessionId))?.familyId ?? null;
     if (!currentFamilyId) {
       // Redis evicted — rebuild from DB session
-      currentFamilyId = session.tokenFamilyId;
+      currentFamilyId = session.tokenFamilyId ?? randomUUID();
       await setRefreshToken(userId, sessionId, currentFamilyId, false);
     }
 
@@ -303,6 +303,7 @@ export class AuthService {
     await sessionRepository.create({
       id: sessionId,
       userId,
+      accessToken,
       refreshTokenHash: refreshHash,
       tokenFamilyId: familyId,
       revoked: false,

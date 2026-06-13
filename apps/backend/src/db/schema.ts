@@ -21,6 +21,7 @@ export const sessions = pgTable('sessions', {
   tokenFamilyId: text('token_family_id'),
   revoked: boolean('revoked').default(false),
   deviceInfo: text('device_info'),
+  bindingHash: text('binding_hash'),
   bindingPlatform: text('binding_platform'),
   bindingCores: integer('binding_cores'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -67,6 +68,7 @@ export const documents = pgTable('documents', {
   updatedAt: timestamp('updated_at').notNull(),
 }, (table) => ({
   ownerIdIdx: index('documents_owner_id_idx').on(table.ownerId),
+  updatedAtIdx: index('documents_updated_at_idx').on(table.updatedAt),
   parentFolderIdIdx: index('documents_parent_folder_id_idx').on(table.parentFolderId),
   contentIdx: index('documents_content_idx').using('gin', table.content),
 }));

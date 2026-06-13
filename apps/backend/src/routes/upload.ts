@@ -163,26 +163,26 @@ app.post('/', async (c: Context) => {
       }
     }
 
-    // Detect duplicate filename within the same document; generate stored_name
+    // Detect duplicate filename within the same document; generate unique fileName
     const existing = await db
-      .select({ storedName: documentFiles.storedName })
+      .select({ fileName: documentFiles.fileName })
       .from(documentFiles)
-      .where(and(eq(documentFiles.documentId, documentId), eq(documentFiles.filename, file.name)))
+      .where(and(eq(documentFiles.documentId, documentId), eq(documentFiles.fileName, file.name)))
       .orderBy(asc(documentFiles.createdAt));
 
-    let storedName = file.name;
+    let fileName = file.name;
     if (existing.length > 0) {
       const base = file.name.replace(/(\.[^.]+)$/, '');
       const ext = file.name.match(/(\.[^.]+)$/)?.[1] || '';
       let i = 1;
-      const used = new Set(existing.map((e) => e.storedName));
-      while (used.has(storedName)) {
-        storedName = `${base}-${i}${ext}`;
+      const used = new Set(existing.map((e) => e.fileName));
+      while (used.has(fileName)) {
+        fileName = `${base}-${i}${ext}`;
         i++;
       }
     }
 
-    const objectKey = `uploads/${user.id}/${documentId}/${randomUUID().slice(0, 8)}/${storedName}`;
+    const objectKey = `uploads/${user.id}/${documentId}/${randomUUID().slice(0, 8)}/${fileName}`;
 
     // Upload to RustFS via S3-compatible API
     try {
@@ -205,11 +205,10 @@ app.post('/', async (c: Context) => {
         id,
         documentId,
         userId: user.id,
-        filename: file.name,
-        storedName,
         objectKey,
+        fileName,
+        mimeType: file.type,
         size: file.size,
-        contentType: file.type,
       });
     } catch (dbErr) {
       logger.error('DB insert after upload failed, cleaning up S3 object', dbErr);
@@ -239,7 +238,7 @@ app.post('/', async (c: Context) => {
         success: true,
         data: {
           url: `/api/files/${objectKey}`,
-          filename: storedName,
+          filename: fileName,
           size: file.size,
           contentType: file.type,
         },

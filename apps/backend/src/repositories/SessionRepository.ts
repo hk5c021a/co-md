@@ -5,6 +5,7 @@ import { sessions, type Session } from '../db/schema.js';
 export interface CreateSessionData {
   id: string;
   userId: string;
+  accessToken: string;
   refreshTokenHash: string;
   tokenFamilyId: string;
   revoked?: boolean;
@@ -57,12 +58,13 @@ export class SessionRepository {
       .values({
         id: data.id,
         userId: data.userId,
+        accessToken: data.accessToken,
         refreshTokenHash: data.refreshTokenHash,
         tokenFamilyId: data.tokenFamilyId,
         revoked: data.revoked ?? false,
-        bindingHash: data.bindingHash ?? '',
-        bindingPlatform: data.bindingPlatform ?? '',
-        bindingCores: data.bindingCores ?? 0,
+        bindingHash: data.bindingHash,
+        bindingPlatform: data.bindingPlatform,
+        bindingCores: data.bindingCores,
         deviceInfo: data.deviceInfo,
         createdAt: new Date(),
         expiresAt: data.expiresAt,

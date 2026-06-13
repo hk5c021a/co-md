@@ -66,7 +66,7 @@ app.get('/:objectKey{.+}', async (c: Context) => {
       return new Response(Readable.toWeb(nodeStream) as ReadableStream, {
         status: 200,
         headers: {
-          'Content-Type': file.contentType,
+          'Content-Type': file.mimeType,
           'Content-Length': String(file.size),
           'Content-Disposition': 'inline',
           'Cache-Control': 'public, max-age=86400',
