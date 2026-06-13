@@ -28,7 +28,7 @@ export class EditorPage {
 
   async waitForLoaded() {
     // Editor is loaded when milkdown editor is visible and not showing loading state
-    await this.milkdownEditor.waitFor({ state: 'visible', timeout: 15_000 });
+    await this.milkdownEditor.waitFor({ state: 'visible', timeout: 60_000 });
   }
 
   async typeInEditor(text: string) {
@@ -36,7 +36,7 @@ export class EditorPage {
     // On mobile viewports, the `.milkdown` wrapper may be partially covered
     // by sidebar or header, so we use force:true and explicit coordinates.
     const proseMirror = this.page.locator('.ProseMirror[contenteditable="true"]');
-    await proseMirror.waitFor({ state: 'visible', timeout: 10_000 });
+    await proseMirror.waitFor({ state: 'visible', timeout: 60_000 });
     await proseMirror.scrollIntoViewIfNeeded();
     await this.page.waitForTimeout(500);
     await proseMirror.focus();

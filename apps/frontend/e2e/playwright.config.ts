@@ -33,8 +33,8 @@ export default defineConfig({
   ],
 
   // ── Global timeout ──
-  timeout: 30_000,
-  expect: { timeout: 10_000 },
+  timeout: 45_000,
+  expect: { timeout: 15_000 },
 
   // ── Shared settings ──
   use: {

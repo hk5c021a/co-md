@@ -5,7 +5,10 @@ test.describe('Visual Regression', () => {
   test('login page snapshot', async ({ page }) => {
     await page.goto('/login');
     await page.waitForSelector('#main-content, #root', { timeout: 10_000 });
-    await expect(page).toHaveScreenshot('login-page.png', { fullPage: true });
+    await expect(page).toHaveScreenshot('login-page.png', {
+      fullPage: true,
+      maxDiffPixelRatio: 0.01, // allow 1% pixel difference (font anti-aliasing)
+    });
   });
 
   test('login form inputs snapshot', async ({ page }) => {

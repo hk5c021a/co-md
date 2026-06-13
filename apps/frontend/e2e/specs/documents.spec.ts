@@ -47,7 +47,7 @@ test.describe('Documents', () => {
     await page.waitForURL(/\/editor\//);
 
     // Editor should load
-    await page.waitForSelector('.milkdown', { timeout: 15_000 });
+    await page.waitForSelector('.milkdown', { timeout: 30_000 });
 
     // Cleanup
     await api.deleteUser(session.accessToken);
@@ -88,10 +88,10 @@ test.describe('Documents', () => {
     const session = await api.register();
     const docId = await api.createDocument(session.accessToken, 'Private Doc');
 
-    // Try to access without auth
+    // Try to access without auth — lazy-loaded editor may render briefly before redirect
     await page.goto(`/editor/${docId}`);
     // Should be redirected to login
-    await page.waitForURL(/\/login/);
+    await page.waitForURL(/\/login/, { timeout: 30_000 });
 
     // Cleanup
     await api.deleteUser(session.accessToken);

@@ -10,7 +10,7 @@
 
 import { db } from '../../src/db/index.js';
 import { users, contacts } from '../../src/db/schema.js';
-import { sql } from 'drizzle-orm';
+import { sql, eq, inArray, like, or, and, not } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 
 const TARGET_USER_COUNT = 10000;
@@ -33,18 +33,13 @@ async function setupTestUser() {
   console.log('Creating test user...');
   testUserId = randomUUID();
 
-  await db.execute(sql`
-    INSERT INTO users (id, username, email, phone, password_hash, created_at, updated_at)
-    VALUES (
-      ${testUserId},
-      ${`contactsearch_user_${Date.now()}`},
-      ${`contactsearch_${Date.now()}@example.com`},
-      ${'1234567890'},
-      '$2b$10$hashedpassword',
-      NOW(),
-      NOW()
-    )
-  `);
+  await db.insert(users).values({
+    id: testUserId,
+    username: `contactsearch_user_${Date.now()}`,
+    email: `contactsearch_${Date.now()}@example.com`,
+    phone: `+861${String(Date.now()).slice(-4)}${'0'.repeat(7)}`.slice(0, 15),
+    passwordHash: 'hashedpassword12345678901234567890',
+  });
 
   console.log(`  Created test user: ${testUserId}`);
   return testUserId;
@@ -55,29 +50,24 @@ async function createTestUsers() {
   const start = Date.now();
 
   for (let batch = 0; batch < TARGET_USER_COUNT / BATCH_SIZE; batch++) {
-    const values: string[] = [];
+    const batchValues: typeof users.$inferInsert[] = [];
     const batchStart = batch * BATCH_SIZE;
+    const ts = Date.now();
 
     for (let i = 0; i < BATCH_SIZE; i++) {
       const index = batchStart + i;
       const userId = randomUUID();
       createdUserIds.push(userId);
-
-      // Create varied usernames for search testing
-      const username = `searchuser_${index}_${Date.now()}`;
-      const email = `searchuser_${index}_${Date.now()}@example.com`;
-      // Phone numbers with various patterns
-      const phone = `1${String(index).padStart(9, '0')}`.slice(0, 15);
-
-      values.push(
-        `('${userId}', '${username}', '${email}', '${phone}', '$2b$10$hashedpassword', NOW(), NOW())`
-      );
+      batchValues.push({
+        id: userId,
+        username: `searchuser_${index}_${ts}`,
+        email: `searchuser_${index}_${ts}@example.com`,
+        phone: `+861${String(ts).slice(-4)}${String(index).padStart(7, '0')}`.slice(0, 15),
+        passwordHash: 'hashedpassword12345678901234567890',
+      });
     }
 
-    await db.execute(sql`
-      INSERT INTO users (id, username, email, phone, password_hash, created_at, updated_at)
-      VALUES ${sql.raw(values.join(', '))}
-    `);
+    await db.insert(users).values(batchValues);
 
     const progress = Math.round(((batch + 1) / (TARGET_USER_COUNT / BATCH_SIZE)) * 100);
     console.log(`  Batch ${batch + 1}/${TARGET_USER_COUNT / BATCH_SIZE} - ${progress}%`);
@@ -99,21 +89,17 @@ async function createContactRelationships() {
   console.log('\nCreating contact relationships...');
   const start = Date.now();
 
-  // Create contacts for the test user
+  // Create contacts for the test user using Drizzle ORM
   const contactBatchSize = 100;
   const contactUserIds = createdUserIds.slice(0, contactBatchSize);
 
-  const values = contactUserIds
-    .map((userId) => {
-      const contactId = randomUUID();
-      return `('${contactId}', '${testUserId}', '${userId}', NOW(), NOW())`;
-    })
-    .join(', ');
-
-  await db.execute(sql`
-    INSERT INTO contacts (id, user_id, contact_user_id, created_at, updated_at)
-    VALUES ${sql.raw(values)}
-  `);
+  await db.insert(contacts).values(
+    contactUserIds.map((userId) => ({
+      id: randomUUID(),
+      userId: testUserId,
+      contactUserId: userId,
+    }))
+  );
 
   const duration = Date.now() - start;
   results.push({
@@ -215,12 +201,11 @@ async function testSearchPerformance() {
   const start5 = Date.now();
 
   const phonePattern = '100050000';
-  const phoneResults = await db.execute(sql`
-    SELECT id, username, email, phone
-    FROM users
-    WHERE phone LIKE '%${phonePattern}%'
-    LIMIT 20
-  `);
+  const phoneResults = await db
+    .select({ id: users.id, username: users.username, email: users.email, phone: users.phone })
+    .from(users)
+    .where(like(users.phone, `%${phonePattern}%`))
+    .limit(20);
   const duration5 = Date.now() - start5;
 
   results.push({
@@ -235,14 +220,17 @@ async function testSearchPerformance() {
   // Test 6: Combined search (search across all fields)
   const start6 = Date.now();
 
-  const combinedResults = await db.execute(sql`
-    SELECT id, username, email, phone
-    FROM users
-    WHERE username LIKE '%5000%'
-       OR email LIKE '%5000%'
-       OR phone LIKE '%5000%'
-    LIMIT 20
-  `);
+  const combinedResults = await db
+    .select({ id: users.id, username: users.username, email: users.email, phone: users.phone })
+    .from(users)
+    .where(
+      or(
+        like(users.username, '%5000%'),
+        like(users.email, '%5000%'),
+        like(users.phone, '%5000%')
+      )
+    )
+    .limit(20);
   const duration6 = Date.now() - start6;
 
   results.push({
@@ -261,14 +249,17 @@ async function testContactSearchIntegration() {
   // Test: Search users excluding existing contacts (add contact flow)
   const start1 = Date.now();
 
-  const nonContactResults = await db.execute(sql`
-    SELECT u.id, u.username, u.email, u.phone
-    FROM users u
-    WHERE u.id != ${testUserId}
-      AND u.id NOT IN (SELECT contact_user_id FROM contacts WHERE user_id = ${testUserId})
-      AND (u.username LIKE '%searchuser%' OR u.email LIKE '%searchuser%' OR u.phone LIKE '%searchuser%')
-    LIMIT 20
-  `);
+  const nonContactResults = await db
+    .select({ id: users.id, username: users.username, email: users.email, phone: users.phone })
+    .from(users)
+    .where(
+      and(
+        not(eq(users.id, testUserId)),
+        not(inArray(users.id, db.select({ contactUserId: contacts.contactUserId }).from(contacts).where(eq(contacts.userId, testUserId)))),
+        or(like(users.username, '%searchuser%'), like(users.email, '%searchuser%'), like(users.phone, '%searchuser%'))
+      )
+    )
+    .limit(20);
   const duration1 = Date.now() - start1;
 
   results.push({
@@ -283,14 +274,17 @@ async function testContactSearchIntegration() {
   // Test: Search existing contacts
   const start2 = Date.now();
 
-  const existingContactResults = await db.execute(sql`
-    SELECT u.id, u.username, u.email, u.phone
-    FROM users u
-    INNER JOIN contacts c ON u.id = c.contact_user_id
-    WHERE c.user_id = ${testUserId}
-      AND (u.username LIKE '%searchuser%' OR u.email LIKE '%searchuser%' OR u.phone LIKE '%searchuser%')
-    LIMIT 20
-  `);
+  const existingContactResults = await db
+    .select({ id: users.id, username: users.username, email: users.email, phone: users.phone })
+    .from(users)
+    .innerJoin(contacts, eq(users.id, contacts.contactUserId))
+    .where(
+      and(
+        eq(contacts.userId, testUserId),
+        or(like(users.username, '%searchuser%'), like(users.email, '%searchuser%'), like(users.phone, '%searchuser%'))
+      )
+    )
+    .limit(20);
   const duration2 = Date.now() - start2;
 
   results.push({
@@ -310,14 +304,14 @@ async function checkIndexes() {
     SELECT indexname, indexdef
     FROM pg_indexes
     WHERE tablename = 'users'
-      AND indexname IN ('users_username_idx', 'users_email_idx', 'users_phone_idx')
+      AND indexname IN ('users_username_unique', 'users_email_unique', 'users_phone_unique')
   `);
 
   const indexNames = indexes.map((idx: { indexname: string }) => idx.indexname);
 
   results.push({
     name: 'Check search indexes',
-    passed: indexNames.length >= 2, // At least email and phone
+    passed: indexNames.length >= 3, // UNIQUE constraints on username+email+phone
     duration: 0,
     expected: 'username, email, phone indexes',
     actual: indexNames.join(', ') || 'No indexes found',
@@ -329,18 +323,15 @@ async function checkIndexes() {
 async function cleanup() {
   console.log('\nCleaning up test data...');
 
-  // Delete contacts first
-  await db.execute(sql`DELETE FROM contacts WHERE user_id = ${testUserId}`);
+  // Clean up test data using Drizzle ORM
+  await db.delete(contacts).where(eq(contacts.userId, testUserId));
 
-  // Delete test users in batches
   for (let i = 0; i < createdUserIds.length; i += BATCH_SIZE) {
     const batch = createdUserIds.slice(i, i + BATCH_SIZE);
-    await db.execute(sql`
-      DELETE FROM users WHERE id IN (${sql.raw(batch.map((id) => `'${id}'`).join(', '))})
-    `);
+    await db.delete(users).where(inArray(users.id, batch));
   }
 
-  await db.execute(sql`DELETE FROM users WHERE id = ${testUserId}`);
+  await db.delete(users).where(eq(users.id, testUserId));
 
   console.log('  Cleanup complete');
 }

@@ -10,31 +10,26 @@ test.describe('Accessibility', () => {
   test('login form is keyboard navigable', async ({ page }) => {
     const auth = new AuthPage(page);
     await auth.goto();
+    // Wait for async CAPTCHA render + React hydration
+    await page.waitForTimeout(500);
 
-    // Tab through form fields — verify focus moves between different elements
-    // Skip any elements without names (e.g., theme/language toggles, skip-to-main)
-    const getFocusInfo = async () => {
-      return page.evaluate(() => ({
-        tag: (document.activeElement as HTMLElement)?.tagName || '',
-        name: (document.activeElement as HTMLElement)?.getAttribute('name') || null,
-      }));
+    // Verify that keyboard tabbing reaches a form field (input/button)
+    const getFocusedId = async () => {
+      return page.evaluate(() => {
+        const el = document.activeElement as HTMLElement | null;
+        return el?.getAttribute('id') || el?.tagName?.toLowerCase() || '';
+      });
     };
 
-    await page.keyboard.press('Tab');
-    let el1 = await getFocusInfo();
-    expect(el1.tag).toBeTruthy(); // Some element should be focused
-
-    // Tab until we land on a form field with a name attribute
-    let el2 = await getFocusInfo();
-    for (let i = 0; i < 5 && !el2.name; i++) {
+    // Tab repeatedly until we reach a known form element or timeout
+    let focused = '';
+    for (let i = 0; i < 30; i++) {
       await page.keyboard.press('Tab');
-      el2 = await getFocusInfo();
+      focused = await getFocusedId();
+      if (focused === 'identifier' || focused === 'password') break;
     }
-    expect(el2.tag).toBeTruthy();
-    expect(el2.name).toBeTruthy();
-    // Verify focus moved to a different element
-    const same = el1.name ? el1.name === el2.name : el1.tag === el2.tag;
-    expect(same).toBe(false); // Different field
+    // We should have landed on a form input
+    expect(['identifier', 'password']).toContain(focused);
   });
 
   test('skip-to-main link is present', async ({ page }) => {

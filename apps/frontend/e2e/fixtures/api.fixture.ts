@@ -103,8 +103,10 @@ export const test = base.extend<ApiFixture>({
           throw new Error(`CAPTCHA fetch failed: ${JSON.stringify(captchaData)}`);
         }
         const captchaId: string = captchaData.data.captchaId;
-        const [ca, cb] = captchaData.data.question.split(/ [×+] /).map((s: string) => parseInt(s.replace(' = ?', ''), 10));
-        const captchaAnswer = ca * cb;
+        // CAPTCHA questions are always "a + b = ?" — parse addition
+        const qMatch = captchaData.data.question.match(/(\d+)\s*\+\s*(\d+)/);
+        if (!qMatch) throw new Error(`Unexpected CAPTCHA question: ${captchaData.data.question}`);
+        const captchaAnswer = parseInt(qMatch[1], 10) + parseInt(qMatch[2], 10);
 
         const r = await request.post(`${API_BASE}/api/auth/register`, {
           headers: JSON_HEADERS,
@@ -137,8 +139,10 @@ export const test = base.extend<ApiFixture>({
           throw new Error(`CAPTCHA fetch failed for login: ${JSON.stringify(captchaData)}`);
         }
         const captchaId: string = captchaData.data.captchaId;
-        const [ca, cb] = captchaData.data.question.split(/ [×+] /).map((s: string) => parseInt(s.replace(' = ?', ''), 10));
-        const captchaAnswer = ca * cb;
+        // CAPTCHA questions are always "a + b = ?" — parse addition
+        const qMatch = captchaData.data.question.match(/(\d+)\s*\+\s*(\d+)/);
+        if (!qMatch) throw new Error(`Unexpected CAPTCHA question: ${captchaData.data.question}`);
+        const captchaAnswer = parseInt(qMatch[1], 10) + parseInt(qMatch[2], 10);
 
         // Fetch per-user PBKDF2 salt first (mirrors browser login flow)
         let salt = APP_SALT;
@@ -214,8 +218,10 @@ export const test = base.extend<ApiFixture>({
         const captchaData = await captchaRes.json();
         if (!captchaData?.success) throw new Error(`CAPTCHA fetch failed: ${JSON.stringify(captchaData)}`);
         const captchaId: string = captchaData.data.captchaId;
-        const [ca, cb] = captchaData.data.question.split(/ [×+] /).map((s: string) => parseInt(s.replace(' = ?', ''), 10));
-        const captchaAnswer = ca * cb;
+        // CAPTCHA questions are always "a + b = ?" — parse addition
+        const qMatch = captchaData.data.question.match(/(\d+)\s*\+\s*(\d+)/);
+        if (!qMatch) throw new Error(`Unexpected CAPTCHA question: ${captchaData.data.question}`);
+        const captchaAnswer = parseInt(qMatch[1], 10) + parseInt(qMatch[2], 10);
 
         const r = await request.post(`${API_BASE}/api/auth/password-reset/request`, {
           headers: JSON_HEADERS,
@@ -235,25 +241,49 @@ export const test = base.extend<ApiFixture>({
           if (body?.success) return body.data.token;
         }
 
-        // Production fallback: retrieve token from Mailpit
-        // Poll Mailpit for the reset email (max 10s)
+        // Retrieve token from Mailpit (production / local-testing mode)
+        // Pre-flight: verify Mailpit API is reachable before polling (max 10s).
+        let mailpitReady = false;
         for (let i = 0; i < 10; i++) {
-          const mpRes = await fetch(`${MAILPIT_API}/messages?limit=10`);
-          const mpData = await mpRes.json() as { messages?: Array<{ ID: string; To: Array<{ Address: string }> }> };
-          const msg = mpData.messages?.find((m) => m.To?.some((r) => r.Address === identifier));
-          if (msg) {
-            // Fetch full message to get the HTML body
-            const detailRes = await fetch(`${MAILPIT_API}/message/${msg.ID}`);
-            const detail = await detailRes.json() as { HTML?: string };
-            if (detail.HTML) {
-              const match = detail.HTML.match(/\/password-reset\/([a-f0-9-]+)/);
-              if (match) return match[1];
-            }
-            throw new Error(`Reset token not found in email HTML for ${identifier}`);
-          }
+          try {
+            const health = await fetch(`${MAILPIT_API}/messages?limit=1`, { signal: AbortSignal.timeout(2000) });
+            if (health.ok) { mailpitReady = true; break; }
+          } catch { /* keep waiting */ }
           await new Promise((r) => setTimeout(r, 1000));
         }
-        throw new Error(`Password reset email not received for ${identifier} after 10s`);
+        if (!mailpitReady) {
+          throw new Error(`Mailpit not reachable at ${MAILPIT_API} after 10s`);
+        }
+
+        // Poll Mailpit for the reset email with exponential backoff.
+        // Start at 200ms, double each retry, cap at 3s, max ~25s total.
+        let delay = 200;
+        for (let i = 0; i < 12; i++) {
+          await new Promise((r) => setTimeout(r, delay));
+          delay = Math.min(delay * 2, 3000);
+          try {
+            const mpRes = await fetch(`${MAILPIT_API}/messages?limit=10`, { signal: AbortSignal.timeout(3000) });
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const mpData: any = await mpRes.json();
+            const msg = mpData.messages?.find((m: any) => m.To?.some((r: any) => r.Address === identifier));
+            if (msg) {
+              const detailRes = await fetch(`${MAILPIT_API}/message/${msg.ID}`, { signal: AbortSignal.timeout(3000) });
+              const detail = await detailRes.json() as { HTML?: string };
+              if (detail.HTML) {
+                const match = detail.HTML.match(/\/password-reset\/([a-f0-9-]+)/);
+                if (match) return match[1];
+              }
+              throw new Error(`Reset token not found in email HTML for ${identifier}`);
+            }
+          } catch (e: any) {
+            if (e.name === 'AbortError' || e.code === 'ECONNREFUSED') {
+              // Mailpit transient error — retry after backoff
+            } else {
+              throw e;
+            }
+          }
+        }
+        throw new Error(`Password reset email not received for ${identifier}`);
       },
 
       async confirmPasswordReset(token: string, passwordHash: string): Promise<void> {

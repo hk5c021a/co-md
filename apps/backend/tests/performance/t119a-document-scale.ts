@@ -42,7 +42,7 @@ async function createTestUsers() {
         ${userId},
         ${`perfuser_${i}_${Date.now()}`},
         ${`perfuser_${i}_${Date.now()}@example.com`},
-        ${`123456${String(i).padStart(7, '0')}`.slice(0, 15)},
+        ${`+861${String(Date.now()).slice(-4)}${String(i).padStart(10, '0')}`.slice(0, 15)},
         '$2b$10$hashedpassword',
         NOW(),
         NOW()
@@ -77,12 +77,12 @@ async function createTestDocuments(ownerIds: string[]) {
       const now = new Date().toISOString();
 
       values.push(
-        `('${docId}', '${ownerId}', 'Test Document ${batch * BATCH_SIZE + i}', '# Content', '${now}', '${now}')`
+        `('${docId}', '${ownerId}', 'Test Document ${batch * BATCH_SIZE + i}', '{}', '0', '${now}', '${now}')`
       );
     }
 
     await db.execute(sql`
-      INSERT INTO documents (id, owner_id, title, content, created_at, updated_at)
+      INSERT INTO documents (id, owner_id, title, content, version, created_at, updated_at)
       VALUES ${sql.raw(values.join(', '))}
     `);
 
