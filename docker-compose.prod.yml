@@ -145,7 +145,7 @@ services:
       MIGRATE_ON_STARTUP: 'true'
       VITE_DEV: 'false'
       LOG_LEVEL: ${LOG_LEVEL:-info}
-      ALLOW_DEV_ENDPOINTS: ${ALLOW_DEV_ENDPOINTS:-false}
+      RATE_LIMIT_AUTH_MAX: ${RATE_LIMIT_AUTH_MAX:-30}
     depends_on:
       postgres:
         condition: service_healthy

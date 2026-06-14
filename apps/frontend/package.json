@@ -1,5 +1,5 @@
 {
-  "name": "@collab/frontend",
+  "name": "@co-md/frontend",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -15,7 +15,7 @@
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",
     "@codemirror/commands": "^6.10.3",
-    "@collab/shared": "workspace:*",
+    "@co-md/shared": "workspace:*",
     "@hookform/resolvers": "^5.4.0",
     "@js-temporal/polyfill": "^0.5.1",
     "@milkdown/core": "^7.21.2",

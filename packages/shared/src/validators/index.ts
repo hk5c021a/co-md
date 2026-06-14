@@ -82,20 +82,9 @@ export const changePasswordSchema = z.object({
   path: ['confirmNewPassword'],
 });
 
-// Folder schema
-export const createFolderSchema = z.object({
-  name: z.string().min(1, 'Folder name is required').max(255, 'Folder name too long'),
-  parentFolderId: z.string().nullable().optional(),
-});
-
-export const updateFolderSchema = z.object({
-  name: z.string().min(1, 'Folder name is required').max(255, 'Folder name too long'),
-});
-
 // Document schema
 export const createDocumentSchema = z.object({
   title: z.string().min(1, 'Document title is required').max(255, 'Title too long'),
-  parentFolderId: z.string().nullable().optional(),
   content: z
     .unknown()
     .optional()
@@ -108,10 +97,6 @@ export const createDocumentSchema = z.object({
 export const updateDocumentSchema = z.object({
   title: z.string().min(1, 'Document title is required').max(255, 'Title too long').optional(),
   content: z.any().optional(),
-});
-
-export const moveDocumentSchema = z.object({
-  parentFolderId: z.string().nullable(),
 });
 
 // Permission schemas

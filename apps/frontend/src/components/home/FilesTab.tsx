@@ -29,7 +29,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { PermissionPanel } from '../PermissionPanel';
-import type { Document } from '@collab/shared';
+import type { Document } from '@co-md/shared';
 
 type FilterMode = 'all' | 'owned' | 'shared';
 type SortMode = 'edited' | 'created' | 'name';

@@ -36,9 +36,9 @@ docker compose --env-file .env.dev.local -f docker-compose.yml -f docker-compose
 
 # 4. 启动开发服务
 DATABASE_URL=postgresql://postgres:postgres_dev_2026@localhost:5433/collab_db \
-  pnpm --filter @collab/backend dev &
-pnpm --filter @collab/ws-server dev &
-pnpm --filter @collab/frontend dev
+  pnpm --filter @co-md/backend dev &
+pnpm --filter @co-md/ws-server dev &
+pnpm --filter @co-md/frontend dev
 ```
 
 ### 服务地址
@@ -94,7 +94,7 @@ npx tsx e2e/lighthouse.test.ts     # Lighthouse (Perf 74 / A11y 100 / BP 100 / S
 
 ```bash
 pnpm typecheck                    # TS 类型检查
-pnpm --filter @collab/shared test # 单元测试
+pnpm --filter @co-md/shared test # 单元测试
 DATABASE_URL=... pnpm db:push     # DB schema 同步
 .\scripts\migrate-prod.ps1        # 生产 DB 迁移
 ```

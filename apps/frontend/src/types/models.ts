@@ -1,7 +1,7 @@
 // Shared domain model types
 //
 // NOTE: These types represent the JSON-serialized API response shapes.
-// They differ from @collab/shared entities in two ways:
+// They differ from @co-md/shared entities in two ways:
 // 1. Date fields are `string` (ISO 8601) — the wire format after JSON.stringify.
 // 2. Some types include denormalized nested objects (e.g. Permission.user)
 //    that are assembled by the backend API layer, not present in DB entities.

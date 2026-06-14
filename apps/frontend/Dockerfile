@@ -1,4 +1,4 @@
-FROM node:20.18-alpine AS deps
+FROM node:22-alpine AS deps
 
 WORKDIR /app
 
@@ -30,7 +30,7 @@ COPY apps/frontend/index.html ./apps/frontend/
 COPY apps/frontend/src ./apps/frontend/src/
 COPY apps/frontend/public ./apps/frontend/public/
 
-RUN pnpm --filter @collab/shared build && pnpm --filter @collab/frontend build
+RUN pnpm --filter @co-md/shared build && pnpm --filter @co-md/frontend build
 
 FROM nginx:1.27-alpine AS runner
 

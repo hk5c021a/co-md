@@ -1,5 +1,5 @@
 {
-  "name": "@collab/ws-server",
+  "name": "@co-md/ws-server",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -12,8 +12,8 @@
     "test:run": "vitest run"
   },
   "dependencies": {
-    "@collab/shared": "workspace:*",
-    "jose": "^6.2.3",
+    "@co-md/shared": "workspace:*",
+    "jose": "^5.9.0",
     "lib0": "^0.2.117",
     "redis": "^4.7.1",
     "ws": "^8.21.0",

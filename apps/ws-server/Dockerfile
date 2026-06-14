@@ -1,4 +1,4 @@
-FROM node:20.18-alpine AS base
+FROM node:22-alpine AS base
 
 WORKDIR /app
 
@@ -21,13 +21,13 @@ COPY packages/shared/src ./packages/shared/src/
 COPY apps/ws-server/tsconfig.json ./apps/ws-server/
 COPY apps/ws-server/src ./apps/ws-server/src/
 
-RUN pnpm --filter @collab/shared build && \
-    (pnpm --filter @collab/ws-server build || true)
+RUN pnpm --filter @co-md/shared build && \
+    (pnpm --filter @co-md/ws-server build || true)
 
 # ── Pruner: extract production-only package with deps ──
 FROM builder AS pruner
 
-RUN pnpm --filter @collab/ws-server deploy --prod --legacy /pruned && \
+RUN pnpm --filter @co-md/ws-server deploy --prod --legacy /pruned && \
     find /pruned -name "*.map" -delete && \
     find /pruned -name "*.tsbuildinfo" -delete && \
     find /pruned -name "*.md" -delete 2>/dev/null; true && \

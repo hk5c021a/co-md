@@ -7,11 +7,8 @@ import {
   refreshTokenSchema,
   updateProfileSchema,
   changePasswordSchema,
-  createFolderSchema,
-  updateFolderSchema,
   createDocumentSchema,
   updateDocumentSchema,
-  moveDocumentSchema,
   grantPermissionSchema,
   batchGrantPermissionSchema,
   sendInvitationSchema,
@@ -208,37 +205,6 @@ describe('changePasswordSchema', () => {
   });
 });
 
-// ── createFolderSchema ──
-
-describe('createFolderSchema', () => {
-  it('accepts valid name', () => {
-    expect(() => createFolderSchema.parse({ name: 'My Folder' })).not.toThrow();
-  });
-
-  it('rejects empty name', () => {
-    const r = createFolderSchema.safeParse({ name: '' });
-    expect(r.success).toBe(false);
-  });
-
-  it('accepts optional parentFolderId', () => {
-    expect(() => createFolderSchema.parse({ name: 'Sub', parentFolderId: 'abc' })).not.toThrow();
-    expect(() => createFolderSchema.parse({ name: 'Sub', parentFolderId: null })).not.toThrow();
-  });
-});
-
-// ── updateFolderSchema ──
-
-describe('updateFolderSchema', () => {
-  it('accepts valid name', () => {
-    expect(() => updateFolderSchema.parse({ name: 'Renamed' })).not.toThrow();
-  });
-
-  it('rejects empty name', () => {
-    const r = updateFolderSchema.safeParse({ name: '' });
-    expect(r.success).toBe(false);
-  });
-});
-
 // ── createDocumentSchema ──
 
 describe('createDocumentSchema', () => {
@@ -253,11 +219,6 @@ describe('createDocumentSchema', () => {
 
   it('accepts optional content', () => {
     expect(() => createDocumentSchema.parse({ title: 'Doc', content: { text: 'hello' } })).not.toThrow();
-  });
-
-  it('accepts optional parentFolderId', () => {
-    expect(() => createDocumentSchema.parse({ title: 'Doc', parentFolderId: 'abc' })).not.toThrow();
-    expect(() => createDocumentSchema.parse({ title: 'Doc', parentFolderId: null })).not.toThrow();
   });
 });
 
@@ -278,17 +239,7 @@ describe('updateDocumentSchema', () => {
   });
 });
 
-// ── moveDocumentSchema ──
-
-describe('moveDocumentSchema', () => {
-  it('accepts null parentFolderId', () => {
-    expect(() => moveDocumentSchema.parse({ parentFolderId: null })).not.toThrow();
-  });
-
-  it('accepts string parentFolderId', () => {
-    expect(() => moveDocumentSchema.parse({ parentFolderId: 'folder-1' })).not.toThrow();
-  });
-});
+// ── grantPermissionSchema ──
 
 // ── grantPermissionSchema ──
 

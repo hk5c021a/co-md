@@ -39,18 +39,7 @@ export interface Document {
   title: string;
   content: unknown; // CRDT Y.Doc serialized state
   ownerId: string;
-  parentFolderId?: string;
   version: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-// Folder entity
-export interface Folder {
-  id: string;
-  name: string;
-  ownerId: string;
-  parentFolderId?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -94,7 +83,9 @@ export type NotificationType =
   | 'permission-revoked'
   | 'permission-changed'
   | 'contact-invitation'
-  | 'contact-added';
+  | 'contact-added'
+  | 'contact-removed'
+  | 'document-deleted';
 
 export interface Notification {
   id: string;

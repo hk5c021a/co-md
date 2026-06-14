@@ -43,33 +43,18 @@ export const passwordResetTokens = pgTable('password_reset_tokens', {
   expiresAtIdx: index('password_reset_tokens_expires_at_idx').on(table.expiresAt),
 }));
 
-// Folders table
-export const folders = pgTable('folders', {
-  id: text('id').primaryKey(),
-  name: text('name').notNull(),
-  ownerId: text('owner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  parentFolderId: text('parent_folder_id'),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-  updatedAt: timestamp('updated_at').notNull(),
-}, (table) => ({
-  ownerIdIdx: index('folders_owner_id_idx').on(table.ownerId),
-  parentFolderIdIdx: index('folders_parent_folder_id_idx').on(table.parentFolderId),
-}));
-
 // Documents table
 export const documents = pgTable('documents', {
   id: text('id').primaryKey(),
   title: text('title').notNull(),
   content: jsonb('content'),
   ownerId: text('owner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  parentFolderId: text('parent_folder_id'),
   version: text('version').notNull().default('0'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull(),
 }, (table) => ({
   ownerIdIdx: index('documents_owner_id_idx').on(table.ownerId),
   updatedAtIdx: index('documents_updated_at_idx').on(table.updatedAt),
-  parentFolderIdIdx: index('documents_parent_folder_id_idx').on(table.parentFolderId),
   contentIdx: index('documents_content_idx').using('gin', table.content),
 }));
 
@@ -142,7 +127,7 @@ export const documentFiles = pgTable('document_files', {
 export type User = typeof users.$inferSelect;
 export type Session = typeof sessions.$inferSelect;
 export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
-export type Folder = typeof folders.$inferSelect;
+
 export type Document = typeof documents.$inferSelect;
 export type Contact = typeof contacts.$inferSelect;
 export type ContactInvitation = typeof contactInvitations.$inferSelect;

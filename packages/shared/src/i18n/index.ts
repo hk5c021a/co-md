@@ -34,16 +34,6 @@ export const documentKeys = {
   'document:copySuccess': 'Document copied',
 } as const;
 
-export const folderKeys = {
-  'folder:nameRequired': 'Folder name is required',
-  'folder:nameTooLong': 'Folder name is too long',
-  'folder:notFound': 'Folder not found',
-  'folder:forbidden': 'You do not have permission to access this folder',
-  'folder:createSuccess': 'Folder created',
-  'folder:deleteSuccess': 'Folder deleted',
-  'folder:invalidName': 'Folder name contains invalid characters',
-} as const;
-
 export const permissionKeys = {
   'permission:granted': 'You have been granted {level} access to "{documentTitle}"',
   'permission:revoked': 'Your access to "{documentTitle}" has been revoked',
@@ -92,7 +82,7 @@ export const commonKeys = {
 
 export type AuthKeys = typeof authKeys;
 export type DocumentKeys = typeof documentKeys;
-export type FolderKeys = typeof folderKeys;
+
 export type PermissionKeys = typeof permissionKeys;
 export type ContactKeys = typeof contactKeys;
 export type NotificationKeys = typeof notificationKeys;

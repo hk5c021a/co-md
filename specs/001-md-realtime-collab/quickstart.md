@@ -55,7 +55,7 @@ SMTP_HOST=localhost
 SMTP_PORT=1025
 SMTP_USER=
 SMTP_PASS=
-SMTP_FROM=noreply@collab.local
+SMTP_FROM=noreply@co-md.local
 
 # 前端
 VITE_API_URL=http://localhost:3000

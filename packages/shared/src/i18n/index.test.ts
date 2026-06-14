@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   authKeys,
   documentKeys,
-  folderKeys,
+
   permissionKeys,
   contactKeys,
   notificationKeys,
@@ -33,14 +33,6 @@ describe('i18n keys', () => {
       expect(documentKeys['document:forbidden']).toBeTruthy();
       expect(documentKeys['document:createSuccess']).toBeTruthy();
       expect(documentKeys['document:deleteSuccess']).toBeTruthy();
-    });
-  });
-
-  describe('folderKeys', () => {
-    it('contains expected keys', () => {
-      expect(folderKeys['folder:notFound']).toBeTruthy();
-      expect(folderKeys['folder:forbidden']).toBeTruthy();
-      expect(folderKeys['folder:createSuccess']).toBeTruthy();
     });
   });
 

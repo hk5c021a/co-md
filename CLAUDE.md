@@ -62,11 +62,11 @@ CORS_ORIGIN=https://localhost:5173 \
 VITE_DEV=true \
 SMTP_HOST=localhost \
 SMTP_PORT=1025 \
-SMTP_FROM=noreply@collab.local \
+SMTP_FROM=noreply@co-md.local \
 PASSWORD_RESET_BASE_URL=https://localhost:5173 \
-pnpm --filter @collab/backend dev &
-pnpm --filter @collab/ws-server dev &
-pnpm --filter @collab/frontend dev
+pnpm --filter @co-md/backend dev &
+pnpm --filter @co-md/ws-server dev &
+pnpm --filter @co-md/frontend dev
 ```
 
 ### 服务地址
@@ -162,7 +162,7 @@ vp preview              # 预览生产构建
 
 # 传统命令
 pnpm typecheck          # TypeScript 类型检查
-pnpm --filter @collab/shared test  # 运行共享包测试
+pnpm --filter @co-md/shared test  # 运行共享包测试
 pnpm db:push            # 推送 schema 到数据库
 ```
 
@@ -205,10 +205,10 @@ pnpm db:push            # 推送 schema 到数据库
 
 | 包 | 文件 | 测试数 | 命令 |
 |---|------|--------|------|
-| packages/shared | 6 | 168 | `pnpm --filter @collab/shared test` |
-| apps/backend | 8 | 149 | `pnpm --filter @collab/backend test` |
-| apps/frontend | 10 | 118 | `pnpm --filter @collab/frontend test` |
-| apps/ws-server | 2 | 20 | `pnpm --filter @collab/ws-server test` |
+| packages/shared | 6 | 168 | `pnpm --filter @co-md/shared test` |
+| apps/backend | 8 | 149 | `pnpm --filter @co-md/backend test` |
+| apps/frontend | 10 | 118 | `pnpm --filter @co-md/frontend test` |
+| apps/ws-server | 2 | 20 | `pnpm --filter @co-md/ws-server test` |
 | **总计** | **26** | **455** | `pnpm -r --parallel test` |
 
 ### E2E（Playwright）

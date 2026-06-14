@@ -32,6 +32,7 @@ Thumbs.db
 coverage/
 test-results/
 apps/reports/
+reports/
 
 # Turbo
 .turbo/
@@ -68,3 +69,5 @@ certs/*.pem
 **/package-lock.json
 .claude/scheduled_tasks.lock
 lighthouse.html
+lighthouse-report.json
+load-test-summary.json

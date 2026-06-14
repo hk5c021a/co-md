@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import type { Document } from '@collab/shared';
+import type { Document } from '@co-md/shared';
 import { apiFetch } from '../lib/apiClient';
 import { SkeletonDocumentCard } from '../components/ui/skeleton';
 

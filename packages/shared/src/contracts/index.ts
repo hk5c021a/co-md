@@ -2,7 +2,6 @@ import type {
   User,
   Session,
   Document,
-  Folder,
   Contact,
   ContactInvitation,
   Permission,
@@ -82,7 +81,6 @@ export interface ChangePasswordRequest {
 // Document endpoints
 export interface CreateDocumentRequest {
   title: string;
-  parentFolderId?: string | null;
   content?: unknown;
 }
 
@@ -91,26 +89,8 @@ export interface UpdateDocumentRequest {
   content?: unknown;
 }
 
-export interface MoveDocumentRequest {
-  parentFolderId?: string | null;
-}
-
 export interface DocumentResponse {
   document: Document;
-}
-
-// Folder endpoints
-export interface CreateFolderRequest {
-  name: string;
-  parentFolderId?: string | null;
-}
-
-export interface UpdateFolderRequest {
-  name: string;
-}
-
-export interface FolderResponse {
-  folder: Folder;
 }
 
 // Permission endpoints
@@ -132,6 +112,14 @@ export interface PermissionChangeMessage {
   data: {
     documentId: string;
     level: 'read-only' | 'read-write' | 'revoked';
+  };
+}
+
+export interface DocumentDeleteMessage {
+  type: 'document-deleted';
+  data: {
+    documentId: string;
+    documentTitle: string;
   };
 }
 
