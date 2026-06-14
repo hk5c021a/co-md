@@ -80,14 +80,14 @@ async function loadDocumentLanguages(hl: Highlighter, markdown: string) {
   // Use Object.keys() since plain objects are not iterable.
   const bundled = new Set(Object.keys(hl.getBundledLanguages?.() ?? {}));
   const toLoad = [...fenceLangs].filter(l => !loaded.has(l) && bundled.has(l));
-  if (toLoad.length > 0) await hl.loadLanguage(...toLoad);
+  if (toLoad.length > 0) await hl.loadLanguage(...(toLoad as unknown[] as Parameters<typeof hl.loadLanguage>));
   return toLoad.length > 0;
 }
 
 function buildCrepeConfig(t: ReturnType<typeof useTranslation>['t'], documentId: string, readOnly: boolean) {
   // Crepe editor translations — sourced from react-i18next so they stay in sync
   // with the global language setting (zh.ts / en.ts).
-  const ct = (key: string) => t(`editorCrepe.${key}`, '') || undefined;
+  const ct = (key: string): string => t(`editorCrepe.${key}`, '') || '';
   return {
     features: { 'top-bar': !readOnly },
     featureConfigs: {

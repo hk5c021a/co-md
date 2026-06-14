@@ -5,6 +5,7 @@ import { formatDate, formatDateShort, compareTimestamps } from '../../lib/dateFo
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useUser } from '../../hooks/useApi';
 import { apiFetch } from '../../lib/apiClient';
+import type { DocItem } from '../../types/models';
 import {
   MdDescription,
   MdNoteAdd,
@@ -51,14 +52,14 @@ export function FilesTab({ onFileSelect, activeFileId }: FilesTabProps) {
   const [newFileOpen, setNewFileOpen] = useState(false);
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [showSortMenu, setShowSortMenu] = useState(false);
-  const [renameTarget, setRenameTarget] = useState<Document | null>(null);
-  const [shareTarget, setShareTarget] = useState<Document | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<Document | null>(null);
+  const [renameTarget, setRenameTarget] = useState<DocItem | null>(null);
+  const [shareTarget, setShareTarget] = useState<DocItem | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<DocItem | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [ownerNames, setOwnerNames] = useState<Record<string, string>>({});
 
-  const { data: documents = [], isLoading: docsLoading } = useQuery<Document[]>({
+  const { data: documents = [], isLoading: docsLoading } = useQuery<DocItem[]>({
     queryKey: ['documents'],
     queryFn: async () => {
       const res = await apiFetch('/api/documents');
@@ -181,7 +182,7 @@ export function FilesTab({ onFileSelect, activeFileId }: FilesTabProps) {
     else navigate(`/editor/${docId}`);
   };
 
-  const handleDelete = (e: React.MouseEvent, doc: Document) => {
+  const handleDelete = (e: React.MouseEvent, doc: DocItem) => {
     e.stopPropagation();
     setDeleteTarget(doc);
   };
@@ -193,7 +194,7 @@ export function FilesTab({ onFileSelect, activeFileId }: FilesTabProps) {
     }
   };
 
-  const handleShare = (e: React.MouseEvent, doc: Document) => {
+  const handleShare = (e: React.MouseEvent, doc: DocItem) => {
     e.stopPropagation();
     setShareTarget(doc);
   };
@@ -215,7 +216,7 @@ export function FilesTab({ onFileSelect, activeFileId }: FilesTabProps) {
     leaveDocumentMutation.mutate(docId);
   };
 
-  const startInlineRename = (doc: Document) => {
+  const startInlineRename = (doc: DocItem) => {
     setEditingId(doc.id);
     setEditName(doc.title);
     setRenameTarget(doc);

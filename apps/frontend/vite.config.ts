@@ -4,7 +4,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 import tailwindcss from '@tailwindcss/vite';
 import { resolve } from 'node:path';
 
-import type { Plugin } from 'vite';
+import type { Plugin } from 'vite-plus';
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 
 // NOTE: Frontend dist is ~15MB due to CodeMirror language modes (bundled by

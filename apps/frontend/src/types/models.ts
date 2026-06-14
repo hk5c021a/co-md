@@ -59,3 +59,16 @@ export interface OnlineUser {
   name: string;
   color: string;
 }
+
+/** Document item returned by GET /api/documents (denormalized with permissionLevel) */
+export interface DocItem {
+  id: string;
+  title: string;
+  content?: unknown;
+  version: string;
+  ownerId: string;
+  createdAt: string;
+  updatedAt: string;
+  permissionLevel?: string;
+  owner?: { id: string; username: string };
+}
