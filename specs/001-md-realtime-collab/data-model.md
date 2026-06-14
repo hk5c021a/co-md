@@ -5,7 +5,7 @@
 
 ---
 
-## 实体关系图
+实体关系图
 
 ```
 User ─────< Contact ─────< User
@@ -17,11 +17,9 @@ User ─────< Contact ─────< User
         └────< Notification   │
                                   │
 Session ────< User (反向引用)        │
-
-Folder ─────< Folder (自引用)
-  │
-  └────< Document
 ```
+
+> **变更记录**：Folder 实体已移除（2026-06），文档不再支持文件夹组织。文档列表通过用户所有权 + 权限直接查询。
 
 ---
 
@@ -35,7 +33,7 @@ Folder ─────< Folder (自引用)
 | username | text | UNIQUE, NOT NULL | 用户名（登录凭证） |
 | email | text | UNIQUE, NOT NULL | 电子邮箱（唯一且用于密码重置） |
 | phone | text | UNIQUE, NOT NULL | 电话号码（唯一且用于密码重置） |
-| passwordHash | text | NOT NULL | 密码 bcrypt 哈希值 |
+| passwordHash | text | NOT NULL | 密码 argon2id 哈希值（兼容 bcrypt 遗留哈希验证） |
 | createdAt | timestamp | NOT NULL, DEFAULT NOW() | 账户创建时间 |
 | updatedAt | timestamp | NOT NULL | 最后更新时间 |
 
@@ -43,7 +41,7 @@ Folder ─────< Folder (自引用)
 - username: 3-30 字符，允许字母、数字、下划线
 - email: 有效邮箱格式
 - phone: 有效国际电话号码格式（E.164）
-- passwordHash: bcrypt 哈希，强度要求符合 FR-002（12+ 字符，特殊/大小写/数字）
+- passwordHash: argon2id 哈希（新密码）或 bcrypt 兼容验证（遗留密码），强度要求符合 FR-002（12+ 字符，特殊/大小写/数字）
 
 ---
 
@@ -73,11 +71,11 @@ Folder ─────< Folder (自引用)
 | id | text (UUID) | PK | 令牌唯一标识 |
 | userId | text (UUID) | FK → User.id, NOT NULL | 所属用户 |
 | tokenHash | text | NOT NULL | 重置令牌哈希（SHA-256，用于验证） |
-| expiresAt | timestamp | NOT NULL | 过期时间（createdAt + 15 分钟） |
+| expiresAt | timestamp | NOT NULL | 过期时间（createdAt + 1 小时） |
 | createdAt | timestamp | NOT NULL, DEFAULT NOW() | 创建时间 |
 
 **验证规则**：
-- 令牌有效期：15 分钟（FR-006）
+- 令牌有效期：1 小时（FR-006，Redis TTL 3600s）
 - 每次生成新令牌时，删除该用户所有旧的重置令牌（防止多次有效令牌共存）
 - 验证时：查找 tokenHash 匹配且 expiresAt > NOW() 的记录
 
@@ -91,7 +89,6 @@ Folder ─────< Folder (自引用)
 | title | text | NOT NULL | 文档标题 |
 | content | jsonb | | CRDT Y.Doc 序列化状态（Yjs 文档树） |
 | ownerId | text (UUID) | FK → User.id, NOT NULL | 所有者用户 |
-| parentFolderId | text (UUID) | FK → Folder.id, NULL | 所属父文件夹（NULL 表示根目录） |
 | version | text | NOT NULL, DEFAULT '0' | 向量时钟版本字符串 |
 | createdAt | timestamp | NOT NULL, DEFAULT NOW() | 创建时间 |
 | updatedAt | timestamp | NOT NULL | 最后更新时间 |
@@ -103,24 +100,7 @@ Folder ─────< Folder (自引用)
 
 ---
 
-### 5. Folder（文件夹）
-
-| 字段 | 类型 | 约束 | 说明 |
-|------|------|------|------|
-| id | text (UUID) | PK | 文件夹唯一标识 |
-| name | text | NOT NULL | 文件夹名称 |
-| ownerId | text (UUID) | FK → User.id, NOT NULL | 所有者用户 |
-| parentFolderId | text (UUID) | FK → Folder.id, NULL | 父文件夹（NULL 表示根目录） |
-| createdAt | timestamp | NOT NULL, DEFAULT NOW() | 创建时间 |
-| updatedAt | timestamp | NOT NULL | 最后更新时间 |
-
-**验证规则**：
-- name: 非空字符串，最大 255 字符，不允许字符 `/` 和 `\`
-- 不允许循环引用（parentFolderId 不能指向自身或后代文件夹）
-
----
-
-### 6. Contact（联系人，双向关系）
+### 5. Contact（联系人，双向关系）
 
 | 字段 | 类型 | 约束 | 说明 |
 |------|------|------|------|
@@ -136,7 +116,7 @@ Folder ─────< Folder (自引用)
 
 ---
 
-### 7. ContactInvitation（联系人邀请）
+### 6. ContactInvitation（联系人邀请）
 
 | 字段 | 类型 | 约束 | 说明 |
 |------|------|------|------|
@@ -154,7 +134,7 @@ Folder ─────< Folder (自引用)
 
 ---
 
-### 8. Permission（文档权限）
+### 7. Permission（文档权限）
 
 | 字段 | 类型 | 约束 | 说明 |
 |------|------|------|------|
@@ -174,13 +154,13 @@ Folder ─────< Folder (自引用)
 
 ---
 
-### 9. Notification（通知）
+### 8. Notification（通知）
 
 | 字段 | 类型 | 约束 | 说明 |
 |------|------|------|------|
 | id | text (UUID) | PK | 通知唯一标识 |
 | userId | text (UUID) | FK → User.id, NOT NULL | 接收通知的用户 |
-| type | text | NOT NULL | permission-granted / permission-revoked / permission-changed / contact-invitation / contact-added |
+| type | text | NOT NULL | permission-granted / permission-revoked / permission-changed / contact-invitation / contact-added / contact-removed / document-deleted |
 | content | text | NOT NULL | 通知内容（中英文本地化 key） |
 | metadata | jsonb | | 附加数据（如 documentId、invitationId） |
 | read | boolean | NOT NULL, DEFAULT FALSE | 是否已读 |
@@ -204,10 +184,7 @@ Folder ─────< Folder (自引用)
 | password_reset_tokens | INDEX | userId | 用户令牌查询 |
 | password_reset_tokens | INDEX | expiresAt | 过期扫描 |
 | documents | INDEX | ownerId | 所有者文档查询 |
-| documents | INDEX | parentFolderId | 文件夹内容查询 |
 | documents | GIN | content (jsonb) | CRDT 内容全文搜索 |
-| folders | INDEX | ownerId | 所有者文件夹查询 |
-| folders | INDEX | parentFolderId | 子文件夹查询 |
 | contacts | UNIQUE | (userId, contactUserId) | 联系人唯一性 |
 | contacts | INDEX | userId | 用户联系人列表 |
 | contact_invitations | INDEX | inviteeId, status | 待处理邀请查询 |
@@ -220,7 +197,7 @@ Folder ─────< Folder (自引用)
 
 ## 数据库迁移策略
 
-1. **初始迁移**：按依赖顺序创建表（User → Session → PasswordResetToken → Folder → Document → Contact → ContactInvitation → Permission → Notification）
+1. **初始迁移**：按依赖顺序创建表（User → Session → PasswordResetToken → Document → Contact → ContactInvitation → Permission → Notification）
 2. **每次变更**：通过 Drizzle migration 系统生成迁移文件
 3. **开发环境**：使用 Drizzle Kit push 模式直接同步 schema
 4. **生产环境**：使用 migration 文件顺序执行

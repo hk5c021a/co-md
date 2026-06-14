@@ -171,6 +171,61 @@ Cookie: refresh_token=<refresh_token>
 }
 ```
 
+### GET /api/auth/password-reset/verify
+
+**描述**：验证重置 token 有效性（GET 请求，token 通过 query string 传递）
+
+**查询参数**：
+- `token` (string, required) — 重置令牌
+
+**成功响应**：`200 OK`
+```json
+{
+  "valid": true
+}
+```
+
+**错误码**：
+- `INVALID_TOKEN` (400)
+- `TOKEN_EXPIRED` (400)
+
+---
+
+### POST /api/auth/password-reset/check
+
+**描述**：异步校验新旧密码是否相同（避免重置为相同密码）
+
+**请求体**：
+```json
+{
+  "token": "string (重置令牌)",
+  "passwordHash": "string (PBKDF2 预哈希)"
+}
+```
+
+**成功响应**：`200 OK`
+```json
+{
+  "isSame": false
+}
+```
+
+---
+
+### GET /api/auth/password-reset/salt
+
+**描述**：获取用户 PBKDF2 salt（用于密码重置页面前端预哈希）
+
+**查询参数**：
+- `identifier` (string, required) — 用户名/邮箱/电话
+
+**成功响应**：`200 OK`
+```json
+{
+  "salt": "string"
+}
+```
+
 ---
 
 ## 用户资料 API

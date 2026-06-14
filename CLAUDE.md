@@ -36,7 +36,7 @@ docker-compose.local.yml  # 本地生产测试覆盖（添加 mailpit）
 ## 开发环境
 
 ### 前提条件
-- Node.js >= 20, pnpm >= 9, Docker Compose
+- Node.js >= 22, pnpm >= 10, Docker Compose
 - mkcert（用于本地 HTTPS）
 
 ### 快速启动
@@ -130,14 +130,14 @@ DB 迁移需从主机运行：`.\scripts\migrate-prod.ps1`（因 drizzle-kit 被
 ### 认证流程
 1. 前端 PBKDF2 (600K iterations) 预哈希密码
 2. CAPTCHA 验证（服务器端 2 位数加法，Redis 存储，5 分钟 TTL，一次性使用）
-3. 后端 bcrypt 二次哈希
+3. 后端 argon2id 二次哈希（新密码）或 bcrypt 兼容验证（遗留密码）
 4. JWT access token (15min) + opaque refresh token (7d)
 5. Token Worker (Web Worker) + IndexedDB AES-GCM 加密存储
 
 ### 安全中间件
 - **CSP**: nonce-based, wasm-unsafe-eval, Trusted Types, report-uri
 - **CSRF**: Origin/Referer header 验证（状态变更方法）
-- **Rate Limit**: 30 req/60s on /api/auth/{register,login,refresh,logout,password-reset}（排除 captcha/salt）
+- **Rate Limit**: `RATE_LIMIT_AUTH_MAX` 环境变量配置（默认 30 req/60s），应用于 /api/auth/{register,login,refresh,logout,password-reset}（排除 captcha/salt）；fail-open 策略（Redis 不可用时放行）
 - **Body Limit**: 10MB 全局请求体限制（排除 /api/upload）
 - **CORS**: Whitelist origin only
 - **Security Headers**: X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy, X-DNS-Prefetch-Control, X-Download-Options, X-Permitted-Cross-Domain-Policies, COOP, COEP, HSTS(prod), Cache-Control: no-store
@@ -148,6 +148,7 @@ DB 迁移需从主机运行：`.\scripts\migrate-prod.ps1`（因 drizzle-kit 被
 - `index.html` 预缓存 (CSP nonce placeholder)
 - `injectRegister: 'auto'`, `registerType: 'autoUpdate'`, `skipWaiting: true`
 - Dev mode: `devOptions: { enabled: true }`
+- **navigateFallbackDenylist**: `[/.*/]` 阻止 NavigationRoute 对非预缓存 URL 返回 index.html（修复 "non-precached-url" 控制台错误）
 - **Service Worker 缓存问题**: 旧 SW 可能缓存旧版 `index.html`（引用不存在的旧 hash 资源）。重建前端后需在浏览器 DevTools → Application → Service Workers → Unregister，然后 Ctrl+Shift+R 强制刷新
 
 ## 开发命令
@@ -195,8 +196,8 @@ pnpm db:push            # 推送 schema 到数据库
 
 1. **TypeScript 类型错误**: backend 约 23 个类型错误（repository 层 schema 属性不匹配），Docker 构建通过 `|| true` 容错，不影响运行时
 2. **Docker 构建**: 后端 `tsc` 有类型错误但能正常生成 JS 输出（`noEmitOnError` 默认 false）。Dockerfile 中 `|| true` 临时绕过，修复类型后可移除
-3. **编辑器**: 远程光标渲染待完善（Milkdown Crepe 不支持原生 ProseMirror Plugin 注入）
-4. **WS 协作**: 基础 Yjs 同步可用，但缺少高级特性（文档持久化负载、token 认证等）
+3. **编辑器**: 远程光标渲染待完善（Milkdown Crepe 不支持原生 ProseMirror Plugin 注入）。客户端 syncStep1 已修复实时同步接收问题
+4. **WS 协作**: Yjs 同步可用，WS 连接延迟到编辑器 onReady 后建立，读写用户 IndexedDB 后台非阻塞加载。缺少高级特性（token 认证、文档持久化负载等）
 5. **集成测试**: 8 个集成测试因环境依赖（需运行中服务器+数据库）无法在纯 vitest 环境中通过
 6. **静态资源 notFound**: 缺失的静态资源返回 404 + 对应 MIME 类型（如 `.css` 返回 `text/css`），避免浏览器 MIME 类型警告。SPA 路由（无扩展名）回退到 `index.html`
 7. **编辑器懒加载**: DocumentEditorPage 使用 React.lazy() 拆分为独立 chunk (1.8MB)，仅在访问 /editor 时加载。E2E 文档编辑测试可能因下载延迟超时（45s timeout）
@@ -205,11 +206,11 @@ pnpm db:push            # 推送 schema 到数据库
 
 | 包 | 文件 | 测试数 | 命令 |
 |---|------|--------|------|
-| packages/shared | 6 | 168 | `pnpm --filter @co-md/shared test` |
+| packages/shared | 6 | 159 | `pnpm --filter @co-md/shared test` |
 | apps/backend | 8 | 149 | `pnpm --filter @co-md/backend test` |
 | apps/frontend | 10 | 118 | `pnpm --filter @co-md/frontend test` |
 | apps/ws-server | 2 | 20 | `pnpm --filter @co-md/ws-server test` |
-| **总计** | **26** | **455** | `pnpm -r --parallel test` |
+| **总计** | **26** | **446** | `pnpm -r --parallel test` |
 
 ### E2E（Playwright）
 
@@ -233,10 +234,61 @@ cd apps/frontend && npx tsx e2e/lighthouse.test.ts
 
 | 脚本 | 目标 | 状态 |
 |------|------|------|
+| `scripts/system-test.mjs` | API 级别系统冒烟测试（40 项） | ✅ 40/40 |
+| `scripts/load-test.mjs` | K6 HTTP 负载测试（500 req/s P95 < 500ms） | ✅ 49 req/s, P95 10ms (10VU) |
+| `scripts/collab-test.mjs` | WebSocket 协作模拟测试 | ⚠️ 需 yjs 根级别依赖 |
+| `apps/frontend/scripts/quality-e2e.mjs` | PWA 清单/SW/性能审计 | ✅ 可用 |
 | T119A | 10万文档查询 < 200ms | ✅ 5/5 (3ms) |
 | T119B | RustFS 500 QPS P95 < 500ms | ⚠️ 大文件需容器网络优化 |
 | T119D | 1万用户搜索 < 2s | ⚠️ sql.raw() 需参数化重写 |
-| K6 负载 | 500 req/s P95 < 500ms | ✅ 49 req/s, P95 10ms (10VU) |
+
+## 文档生命周期
+
+### 级联删除
+
+`DocumentService.delete()` 执行以下步骤：
+1. 验证所有权（仅 owner 可删除）
+2. 收集受影响用户（从 permissions 表查询所有被授权用户）
+3. 清理 RustFS 存储对象（删除文档关联的所有上传文件）
+4. 删除数据库记录（document + permissions）
+5. 通过 Redis pub/sub 实时通知所有受影响用户（`document-deleted` 消息）
+
+### 权限变更实时通知
+
+- `permission-granted`：授予权限时通知被授权用户
+- `permission-revoked`：撤销权限时通知被撤销用户（前端即时锁定编辑器）
+- `permission-changed`：权限级别变更时通知（前端重新获取权限级别）
+- `contact-removed`：联系人被移除时同时通知双方
+
+## 前端架构
+
+### 路由懒加载
+
+所有页面组件通过 `lazyPage.ts`（通用 `React.lazy()` HOC）按需加载：
+- `LoginPage`、`RegisterPage`、`UserHomePage`、`DocumentEditorPage`、`PasswordResetPage`、`ForbiddenPage`、`NotFoundPage`
+
+编辑器 `DocumentEditorPage` 拆分为独立 chunk（~1.8MB），仅在访问 `/editor/:id` 时加载。
+
+### 代码分割
+
+`vite.config.ts` 通过 `manualChunks` 将大型依赖拆分为独立 vendor chunk：
+- `vendor-milkdown`（Milkdown Crepe 编辑器）
+- `vendor-codemirror`（CodeMirror 核心）
+- `vendor-prosemirror`（ProseMirror 核心）
+- `vendor-yjs`（Yjs + y-protocols）
+
+## 运行时维护
+
+### Periodic Cleanup
+
+`apps/backend/src/index.ts` 中的 `startPeriodicCleanup()` 定期清理（每 10 分钟）：
+- 过期 sessions
+- 过期 contact invitations
+- 过期 password reset tokens
+
+### Prometheus Metrics
+
+`/metrics` 端点暴露 prom-client 指标（请求数、响应时间分布、错误率）。
 
 ## DB 迁移
 

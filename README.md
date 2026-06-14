@@ -6,7 +6,7 @@
 
 - **实时协同编辑** — Yjs CRDT，多人实时同步
 - **WYSIWYG Markdown** — Milkdown Crepe 编辑器，语法高亮
-- **文档管理** — CRUD + 文件夹
+- **文档管理** — 创建、编辑、删除 Markdown 文档
 - **权限控制** — read-only / read-write / owner
 - **联系人系统** — 邀请制协作
 - **PWA** — Service Worker + Workbox 缓存策略
@@ -62,7 +62,7 @@ docker compose --env-file .env.prod.local -f docker-compose.yml -f docker-compos
 
 ## 安全
 
-- **认证**: PBKDF2 (600K) → CAPTCHA → bcrypt → JWT + Refresh Token
+- **认证**: PBKDF2 (600K) → CAPTCHA → argon2id（兼容 bcrypt 遗留哈希） → JWT + Refresh Token
 - **Token Worker**: Web Worker + IndexedDB AES-GCM
 - **CSP**: nonce-based + Trusted Types + wasm-unsafe-eval
 - **CSRF**: Origin 头验证
@@ -85,7 +85,7 @@ docker-compose.local.yml  # 本地生产测试配置
 ## 测试
 
 ```bash
-pnpm -r --parallel test            # 全部 455 单元测试
+pnpm -r --parallel test            # 全部 446 单元测试
 cd apps/frontend && npx playwright test --config=e2e/playwright.config.ts  # E2E (3 browsers)
 npx tsx e2e/lighthouse.test.ts     # Lighthouse (Perf 74 / A11y 100 / BP 100 / SEO 92)
 ```

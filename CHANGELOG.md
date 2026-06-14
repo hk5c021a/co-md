@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.0.4] — 2026-06-14
+
+### Changed
+
+- **包重命名**: `@collab` → `@co-md`（全部 package.json、Dockerfile、import）
+- **移除 folders 功能**: 删除 folders 表/实体/validator/contract/i18n key，前端移除 parentFolderId 引用
+- **编辑器修复**: 客户端发送 syncStep1 解决只读用户空白屏问题；WS 延迟连接到编辑器 onReady 后
+- **级联删除**: DocumentService.delete() 清理 RustFS + 通知所有受影响用户；ContactService 双向通知
+- **安全加固**: 密码哈希 bcrypt → argon2id（兼容 bcrypt 遗留哈希）；密码重置 TTL 15min → 1h
+- **安全中间件**: CSP nonce 完善；CSRF Origin/Referer 验证；速率限制 fail-open + RATE_LIMIT_AUTH_MAX 配置
+- **Workbox 修复**: navigateFallbackDenylist: [/.*/] 修复 non-precached-url 错误
+- **Node.js**: Docker 镜像升级 node:20 → node:22-alpine
+
+### Added
+
+- `apps/backend/src/lib/password.ts` — argon2id 密码哈希
+- `apps/backend/src/services/notificationPublisher.ts` — Redis pub/sub 通知
+- `apps/frontend/src/lib/lazyPage.ts` — 通用 React.lazy() HOC
+- `scripts/collab-test.mjs` — WebSocket 协作测试
+- `scripts/load-test.mjs` — K6 负载测试
+- `apps/frontend/scripts/quality-e2e.mjs` — PWA/性能审计
+- Prometheus /metrics 端点
+- Periodic cleanup（过期 sessions/invitations/password-reset tokens）
+
 ## [0.0.3] — 2026-06-07
 
 ### Changed

@@ -7,7 +7,7 @@
 
 ## 环境要求
 
-- Node.js 20+
+- Node.js 22+
 - pnpm 9+
 - Docker Desktop（用于 PostgreSQL、Redis）
 - Docker Compose
@@ -58,8 +58,8 @@ SMTP_PASS=
 SMTP_FROM=noreply@co-md.local
 
 # 前端
-VITE_API_URL=http://localhost:3000
-VITE_WS_URL=ws://localhost:4000
+VITE_API_URL=https://localhost:3000
+VITE_WS_URL=wss://localhost:4000
 ```
 
 ### 3. 启动基础设施（Docker）
@@ -77,7 +77,7 @@ pnpm db:push
 ### 4. 启动后端
 
 ```bash
-pnpm --filter backend dev
+pnpm --filter @co-md/backend dev
 ```
 
 后端运行在 `http://localhost:3000`
@@ -85,7 +85,7 @@ pnpm --filter backend dev
 ### 5. 启动 WebSocket 服务
 
 ```bash
-pnpm --filter ws-server dev
+pnpm --filter @co-md/ws-server dev
 ```
 
 WebSocket 服务运行在 `ws://localhost:4000`
@@ -93,7 +93,7 @@ WebSocket 服务运行在 `ws://localhost:4000`
 ### 6. 启动前端
 
 ```bash
-pnpm --filter frontend dev
+pnpm --filter @co-md/frontend dev
 ```
 
 前端运行在 `http://localhost:5173`

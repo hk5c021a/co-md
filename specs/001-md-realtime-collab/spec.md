@@ -146,10 +146,10 @@
 
 #### 文件管理
 
-- **FR-014**：系统必须提供可折叠的侧边栏，显示文件和目录的树形结构。
-- **FR-015**：用户必须能够创建、重命名、移动、复制和删除文件及目录。
+- **FR-014**：~~系统必须提供可折叠的侧边栏，显示文件和目录的树形结构。~~ **已移除**（2026-06）：folders 功能不再实现，文档列表使用扁平列表。
+- **FR-015**：~~用户必须能够创建、重命名、移动、复制和删除文件及目录。~~ **已移除**（2026-06）：目录管理功能移除，保留文档创建/复制/删除。
 - **FR-016**：用户必须能够上传（最大 50MB）和下载 Markdown 文件及相关资源文件。
-- **FR-017**：文件操作必须立即反映在文件树中。
+- **FR-017**：~~文件操作必须立即反映在文件树中。~~ **已移除**（2026-06）：文件树功能移除。
 
 #### 联系人管理
 
@@ -185,9 +185,9 @@
 
 ### 关键实体
 
-- **User（用户）**：系统的注册用户。属性：id、username（用户名）、email（邮箱）、phone（电话）、passwordHash（密码哈希）、createdAt（创建时间）、updatedAt（更新时间）。
-- **Document（文档）**：一个 Markdown 文件。属性：id、title（标题）、content（内容）、ownerId（所有者ID）、parentFolderId（父文件夹ID）、createdAt、updatedAt。
-- **Folder（文件夹）**：一个目录。属性：id、name（名称）、ownerId、parentFolderId、createdAt、updatedAt。
+- **User（用户）**：系统的注册用户。属性：id、username（用户名）、email（邮箱）、phone（电话）、passwordHash（argon2id 密码哈希，兼容 bcrypt 遗留哈希验证）、createdAt（创建时间）、updatedAt（更新时间）。
+- **Document（文档）**：一个 Markdown 文件。属性：id、title（标题）、content（内容）、ownerId（所有者ID）、createdAt、updatedAt。
+- ~~**Folder（文件夹）**~~：**已移除**（2026-06）。
 - **Contact（联系人）**：两个用户之间的双向连接。属性：id、userId、contactUserId、createdAt。
 - **ContactInvitation（联系人邀请）**：一个待处理的联系人请求。属性：id、inviterId（邀请人ID）、inviteeId（被邀请人ID）、status（状态）、expiresAt（过期时间）、createdAt。
 - **Permission（权限）**：用户对文档的访问级别。属性：id、documentId、userId、level（read-only | read-write）、grantedBy（授权人）、createdAt、updatedAt。

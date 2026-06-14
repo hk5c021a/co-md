@@ -68,6 +68,7 @@ curl -k https://localhost/health
 | ------------------- | -------- | -------------------- |
 | `DOMAIN`            | yes      | `collab.example.com` |
 | `JWT_SECRET`        | yes      | 64-char random hex   |
+| `JWT_REFRESH_SECRET`| yes      | 64-char random hex   |
 | `POSTGRES_USER`     | yes      | `postgres`           |
 | `POSTGRES_PASSWORD` | yes      | 32-char random       |
 | `POSTGRES_DB`       | yes      | `collab_db`          |
@@ -82,6 +83,7 @@ curl -k https://localhost/health
 | `SMTP_PASS`         | yes      | app-password         |
 | `SMTP_FROM`         | yes      | `noreply@example.com`|
 | `ACME_EMAIL`        | no       | `admin@example.com`  |
+| `RATE_LIMIT_AUTH_MAX`| no      | `30` (default)       |
 
 ## TLS
 
@@ -138,8 +140,8 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T postgres
 ## Testing
 
 ```bash
-pnpm -r --parallel test              # 455 unit tests
-cd apps/frontend && npx playwright test --config=e2e/playwright.config.ts  # 69 E2E (3 browsers)
+pnpm -r --parallel test              # 446 unit tests
+cd apps/frontend && npx playwright test --config=e2e/playwright.config.ts  # 23 E2E per browser
 cd apps/frontend && npx tsx e2e/lighthouse.test.ts  # Lighthouse audit
 .\scripts\migrate-prod.ps1            # DB migration (from host)
 ```

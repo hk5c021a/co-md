@@ -4,12 +4,12 @@
 
 ## 摘要
 
-构建一个支持多人实时协同编辑的在线 Markdown 文档系统。用户可以创建、编辑、分享 Markdown 文件，并通过 WebSocket 实现毫秒级实时同步。使用 Yjs CRDT 处理冲突，CodeMirror 6 作为编辑器，Hono 作为后端 API 框架。
+构建一个支持多人实时协同编辑的在线 Markdown 文档系统。用户可以创建、编辑、分享 Markdown 文件，并通过 WebSocket 实现毫秒级实时同步。使用 Yjs CRDT 处理冲突，Milkdown Crepe 7 作为编辑器，Hono 作为后端 API 框架。
 
 ## 技术上下文
 
 **语言/版本**：TypeScript 5.x
-**主要依赖**：React 19、Hono、Drizzle ORM、Yjs、CodeMirror 6、PostgreSQL、Redis
+**主要依赖**：React 19、Hono、Drizzle ORM、Yjs、Milkdown Crepe 7、PostgreSQL、Redis
 **存储**：PostgreSQL（文档元数据 + CRDT 状态）、RustFS 对象存储（文件资产）
 **测试**：Vitest + Testing Library
 **目标平台**：Web 浏览器（桌面 + 移动响应式）

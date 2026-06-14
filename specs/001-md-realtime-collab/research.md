@@ -7,7 +7,11 @@
 
 ## 1. Markdown 编辑器选型
 
-### 决策：CodeMirror 6
+### 最终决策：Milkdown Crepe 7（2026-06 更新）
+
+> **原研究阶段推荐 CodeMirror 6（见下文），实际实现采用了 Milkdown Crepe 7** — 一个基于 ProseMirror 的 WYSIWYG Markdown 编辑器框架，提供开箱即用的 Crepe 主题和 `@milkdown/plugin-collab` 协同编辑插件。
+
+### 原推荐方案（仅供参考）：CodeMirror 6
 
 ### 理由
 

@@ -13,7 +13,7 @@ import lighthouseDesktopConfig from 'lighthouse/core/config/desktop-config.js';
 import { appendFileSync, writeFileSync } from 'node:fs';
 
 const BASE_URL = 'https://localhost';
-const REPORT_FILE = 'lighthouse-report.json';
+const REPORT_FILE = '../../reports/lighthouse-report.json';
 
 async function main() {
   const browser = await chromium.launch({

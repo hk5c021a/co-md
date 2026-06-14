@@ -102,7 +102,7 @@ Phase 2 (Foundational) ── 阻塞所有用户故事
 
 ### 实现
 
-- [x] T026 [P] [US1] 创建 `apps/backend/src/routes/auth.ts`：注册端点 `/api/auth/register`（用户名/邮箱/电话唯一性校验，bcrypt 密码哈希）
+- [x] T026 [P] [US1] 创建 `apps/backend/src/routes/auth.ts`：注册端点 `/api/auth/register`（用户名/邮箱/电话唯一性校验，argon2id 密码哈希，兼容 bcrypt 遗留哈希验证）
 - [x] T027 [P] [US1] 创建登录端点 `/api/auth/login`（支持 username/email/phone + 密码）
 - [x] T028 [P] [US1] 创建令牌刷新端点 `/api/auth/refresh`（refresh token 7 天）
 - [x] T029 [P] [US1] 创建登出端点 `/api/auth/logout`（撤销 refresh token）
@@ -135,27 +135,27 @@ Phase 2 (Foundational) ── 阻塞所有用户故事
 
 ### 实现
 
-- [ ] T041 [P] [US3] 创建文件夹 CRUD 路由和服务（`apps/backend/src/routes/folders.ts`）
-- [ ] T042 [P] [US3] 创建文档 CRUD 路由和服务（`apps/backend/src/routes/documents.ts`）
-- [ ] T043 [P] [US3] 实现文档移动端点 `/api/documents/:id/move`
-- [ ] T044 [P] [US3] 实现文档复制端点 `/api/documents/:id/copy`
-- [ ] T045 [US3] 实现文件上传端点 `/api/upload/presigned`（返回 RustFS Presigned URL，前端直传 RustFS）
-- [ ] T046 [US3] 实现文件下载端点 `/api/documents/:id/download`（生成 RustFS Presigned 下载 URL）
-- [ ] T047 [US3] 实现文件夹删除（递归删除所有子文档和子文件夹）
+- [x] T041 [P] [US3] ~~创建文件夹 CRUD 路由和服务~~ **已移除** — folders 功能不再实现（2026-06）
+- [x] T042 [P] [US3] 创建文档 CRUD 路由和服务（`apps/backend/src/routes/documents.ts`）
+- [x] T043 [P] [US3] ~~实现文档移动端点~~ **已移除** — 随 folders 移除
+- [x] T044 [P] [US3] 实现文档复制端点 `/api/documents/:id/copy`
+- [x] T045 [US3] 实现文件上传端点 `/api/upload`（RustFS 存储）
+- [x] T046 [US3] 实现文件下载端点 `/api/files/:key`（RustFS 取回）
+- [x] T047 [US3] ~~实现文件夹删除~~ **已移除** — 随 folders 移除
 
 ### 前端
 
-- [ ] T048 [P] [US3] 创建 `apps/frontend/src/components/FileTree.tsx`：可折叠树形侧边栏
-- [ ] T049 [P] [US3] 创建 `apps/frontend/src/hooks/useFileTree.ts`：TanStack Query 文件树数据获取
-- [ ] T050 [US3] 创建新建文件/文件夹模态框
-- [ ] T051 [US3] 创建文件上传组件（拖拽上传、直传 RustFS）
-- [ ] T052 [US3] 创建文件下载功能
+- [x] T048 [P] [US3] ~~创建 FileTree.tsx 可折叠树形侧边栏~~ **已移除** — 随 folders 移除
+- [x] T049 [P] [US3] ~~创建 useFileTree.ts 文件树数据获取~~ **已移除** — 随 folders 移除
+- [x] T050 [US3] 创建新建文件模态框
+- [x] T051 [US3] 创建文件上传组件（拖拽上传、直传 RustFS）
+- [x] T052 [US3] 创建文件下载功能
 
 ### 测试
 
-- [ ] T053 [P] [US3] 创建 Vitest 测试：文件夹创建/重命名/删除
-- [ ] T054 [P] [US3] 创建 Vitest 测试：文档创建/移动/复制/删除
-- [ ] T055 [US3] 创建 Vitest 测试：50MB 文件上传成功响应
+- [x] T053 [P] [US3] ~~创建 Vitest 测试：文件夹创建/重命名/删除~~ **已移除** — 随 folders 移除
+- [x] T054 [P] [US3] 创建 Vitest 测试：文档创建/复制/删除
+- [x] T055 [US3] 创建 Vitest 测试：文件上传成功响应
 
 **检查点**：文件树显示正常；文件创建/移动/复制/删除均立即反映在树中
 
@@ -180,14 +180,14 @@ Phase 2 (Foundational) ── 阻塞所有用户故事
 
 ### 前端编辑器
 
-- [ ] T062 [P] [US2] 在 `apps/frontend/src/components/Editor/` 安装配置 CodeMirror 6 + `@codemirror/lang-markdown`
-- [ ] T063 [P] [US2] 集成 `y-codemirror.next`：CodeMirror 6 与 Yjs 绑定
-- [ ] T064 [P] [US2] 集成 `y-indexeddb`：离线变更持久化到 IndexedDB
-- [ ] T065 [US2] 配置 `y-websocket` 客户端：连接到 `ws-server`，实时同步变更
-- [ ] T065A [US2] 实现 WebSocket 连接中的 access token 过期自动刷新：使用 setInterval 每 30 秒检测一次 access token 剩余有效期，提前 1 分钟自动调用刷新接口获取新 token，通过 Yjs awareness 心跳机制通知协作服务器更新认证状态，保持协作会话不断开
-- [ ] T066 [US2] 实现三种视图模式：纯编辑、纯预览、双栏（编辑 + 预览）
-- [ ] T067 [US2] 实现 Markdown 预览渲染（支持表格、任务列表、脚注、删除线、表情符号）
-- [ ] T068 [US2] 实现自动保存（每 30 秒或变更后 debounce 2 秒保存到服务器）
+- [x] T062 [P] [US2] ~~安装配置 CodeMirror 6~~ **实现为 Milkdown Crepe 7**（WYSIWYG Markdown 编辑器，基于 ProseMirror）
+- [x] T063 [P] [US2] ~~集成 y-codemirror.next~~ **实现为 @milkdown/plugin-collab**（Milkdown + Yjs 绑定）
+- [x] T064 [P] [US2] 集成 `y-indexeddb`：离线变更持久化到 IndexedDB
+- [x] T065 [US2] 配置 `y-websocket` 客户端：连接到 `ws-server`，实时同步变更（含客户端 syncStep1 发起）
+- [x] T065A [US2] WebSocket 连接中 token 自动刷新 + WS 延迟连接到编辑器 onReady 后
+- [x] T066 [US2] ~~三种视图模式~~ **实现为 Milkdown Crepe 单视图**（WYSIWYG 编辑 + 实时预览）
+- [x] T067 [US2] Markdown 渲染（Milkdown Crepe 内置：表格、任务列表、代码高亮等）
+- [x] T068 [US2] 自动保存（每 30 秒间隔保存到后端）
 - [ ] T069 [US2] 实现离线编辑（网络断开时本地排队，恢复后同步合并）
 
 ### 测试
