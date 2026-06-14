@@ -160,8 +160,9 @@ export class DocumentService {
         await deleteFromStorage(file.objectKey);
       } catch (err) {
         logger.error(
-          { err, objectKey: file.objectKey, documentId: id },
-          'Failed to delete S3 object during document deletion'
+          'Failed to delete S3 object during document deletion',
+          err,
+          { objectKey: file.objectKey, documentId: id }
         );
       }
     }
@@ -184,7 +185,7 @@ export class DocumentService {
         type: 'document-deleted',
         data: { documentId: id, documentTitle: doc.title },
       }).catch((err) =>
-        logger.error({ err, userId: uid, documentId: id }, 'Failed to notify user of document deletion')
+        logger.error('Failed to notify user of document deletion', err, { userId: uid, documentId: id })
       );
     }
   }

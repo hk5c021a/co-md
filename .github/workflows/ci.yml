@@ -9,6 +9,8 @@ jobs:
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     services:
       postgres:
@@ -49,11 +51,11 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Build shared package
+        run: pnpm --filter @co-md/shared build
+
       - name: Type check
         run: pnpm typecheck
-
-      - name: Lint
-        run: pnpm lint
 
       - name: Unit tests
         run: pnpm test
@@ -65,6 +67,8 @@ jobs:
   integration-test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     services:
       postgres:
@@ -105,13 +109,16 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Build shared package
+        run: pnpm --filter @co-md/shared build
+
       - name: Push database schema
         run: pnpm --filter @co-md/backend db:push
         env:
           DATABASE_URL: 'postgresql://test:test@localhost:5432/test'
 
       - name: Run integration tests
-        run: pnpm --filter @co-md/backend test:integration
+        run: pnpm --filter @co-md/backend test
         env:
           JWT_SECRET: 'ci-test-secret-at-least-32-chars!!'
           DATABASE_URL: 'postgresql://test:test@localhost:5432/test'

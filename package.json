@@ -6,6 +6,7 @@
   "scripts": {
     "build": "pnpm -r build",
     "dev": "pnpm -r --parallel dev",
+    "test": "pnpm -r --parallel test",
     "typecheck": "pnpm -r typecheck",
     "db:push": "pnpm --filter @co-md/backend db:push"
   },
