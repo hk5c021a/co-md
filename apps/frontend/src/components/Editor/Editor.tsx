@@ -47,7 +47,7 @@ import { Crepe } from '@milkdown/crepe';
 import { collab, collabServiceCtx } from '@milkdown/plugin-collab';
 import { highlight, highlightPluginConfig } from '@milkdown/plugin-highlight';
 import type { Highlighter } from 'shiki';
-import { replaceAll } from '@milkdown/utils';
+import { replaceAll, getMarkdown } from '@milkdown/utils';
 import { editorViewOptionsCtx, type Editor } from '@milkdown/core';
 
 // ═══ Shiki highlighter (lazy-loaded, languages loaded on demand) ═══
@@ -165,7 +165,7 @@ import * as Y from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
 import * as encoding from 'lib0/encoding';
 import * as decoding from 'lib0/decoding';
-import { writeUpdate, readSyncMessage } from 'y-protocols/sync';
+import { writeUpdate, writeSyncStep1, readSyncMessage } from 'y-protocols/sync';
 import * as awarenessProtocol from 'y-protocols/awareness';
 import { tokenStore } from '../../lib/tokenStore';
 import { API_BASE, getWsBase, apiFetch } from '../../lib/apiClient';
@@ -243,6 +243,17 @@ function MilkdownInner({
     (root) => {
       const ro = readOnlyRef.current;
       const crepe = new Crepe({ root, ...buildCrepeConfig(t, documentId, ro) });
+
+      // ── Read-only mode: make the editor truly non-editable at the ProseMirror level ──
+      // This prevents ALL user input (keyboard, paste, drag-drop) at the editor engine
+      // layer, not just hiding the toolbar. Remote changes from other collaborators
+      // still arrive via Yjs sync and are rendered correctly.
+      if (ro) {
+        crepe.editor.config((ctx) => {
+          ctx.set(editorViewOptionsCtx, { editable: () => false });
+        });
+      }
+
       // Start shiki lazy-load (no languages preloaded — loaded on demand from doc)
       _highlightSetup = false;
       if (!ro && !_highlighter) getHighlighter().then((hl) => { _highlighter = hl; });
@@ -396,6 +407,22 @@ export function CollaborativeEditor({
   const pendingMarkdownRef = useRef('');
   const apiFallbackRef = useRef('');
   const apiYjsFallbackRef = useRef<string | null>(null);
+  // Track whether the initial WS sync (syncStep1) has been received.
+  // When true, ydoc already contains authoritative content from the server.
+  const wsInitialSyncRef = useRef(false);
+  // ── Collab-ready deferred WS connection ──
+  // The WS connection MUST happen AFTER collab.bindDoc().connect() is called.
+  // If syncStep1 arrives before collab binding, ydoc absorbs the content but
+  // the ProseMirror editor never displays it. We defer WS connection to the
+  // onReady callback (which fires when collab is actually bound) to guarantee
+  // correct ordering without fragile buffering or timing hacks.
+  const deferredWsRef = useRef<(() => void) | null>(null);
+  // message handler & sync processor — defined in setup(), called from deferred WS
+  const wsMsgHandlerRef = useRef<((e: MessageEvent) => void) | null>(null);
+  const processBinaryMsgRef = useRef<((arr: Uint8Array) => void) | null>(null);
+  // mount generation — bumped on each useEffect re-run; onReady timeouts
+  // read it to skip stale callbacks after document switches.
+  const mountGenRef = useRef(0);
 
   const connectWs = useCallback((url: string, ydoc: Y.Doc, onMsg: (e: MessageEvent) => void) => {
     if (wsRef.current) {
@@ -415,6 +442,22 @@ export function CollaborativeEditor({
     ws.onopen = () => {
       setIsConnected(true);
       reconnectAttempts.current = 0;
+      // ── Initiate y-protocols sync: send client's syncStep1 to server ──
+      // The server responds with syncStep2 containing the document content
+      // the client is missing. Without this, the client NEVER receives the
+      // server's full document state — only incremental broadcasts from
+      // other clients. This is essential for read-only users who have no
+      // local content to seed the ydoc.
+      try {
+        const enc = encoding.createEncoder();
+        encoding.writeVarUint(enc, 0); // MESSAGE_SYNC
+        writeSyncStep1(enc, ydoc);
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(encoding.toUint8Array(enc));
+        }
+      } catch (err) {
+        console.error('[Editor] Failed to send syncStep1:', (err as Error).message);
+      }
     };
     ws.onmessage = (e) => {
       onMsg(e);
@@ -478,6 +521,8 @@ export function CollaborativeEditor({
     if (!container) return;
     let cancelled = false;
     setIsLoading(true);
+    ++mountGenRef.current;
+    const mountId = mountGenRef.current;
     const setup = async () => {
       let loadedContent = '';
       try {
@@ -489,9 +534,10 @@ export function CollaborativeEditor({
           else if (typeof d.content === 'object' && d.content !== null) {
             const o = d.content as Record<string, unknown>;
             // Yjs CRDT state — decode and apply directly (skip markdown parsing)
-            if (typeof o.yjsUpdate === 'string') {
+            // Guard against empty string (uninitialized DB field)
+            if (typeof o.yjsUpdate === 'string' && o.yjsUpdate.length > 0) {
               apiYjsFallbackRef.current = o.yjsUpdate;
-            } else if (Array.isArray(o.ops)) {
+            } else if (Array.isArray(o.ops) && o.ops.length > 0) {
               loadedContent = (o.ops as Record<string, unknown>[])
                 .filter((op) => typeof op.insert === 'string')
                 .map((op) => op.insert as string)
@@ -513,15 +559,39 @@ export function CollaborativeEditor({
       const persistence = new IndexeddbPersistence(`doc-${documentId}`, ydoc);
       persistenceRef.current = persistence;
 
-      // Apply server-persisted Yjs CRDT state if available (cross-device recovery)
-      if (apiYjsFallbackRef.current) {
+      // Apply server-persisted Yjs CRDT state if available (cross-device recovery).
+      // Applied BEFORE IndexedDB sync so server data takes precedence.
+      // Note: treat empty string as null — the API may return yjsUpdate: "" for
+      // documents that have never been persisted with CRDT state.
+      const yjsFallback = apiYjsFallbackRef.current;
+      if (yjsFallback && yjsFallback.length > 0) {
         try {
-          const update = Uint8Array.from(atob(apiYjsFallbackRef.current), (c) => c.charCodeAt(0));
-          Y.applyUpdate(ydoc, update);
+          const update = Uint8Array.from(atob(yjsFallback), (c) => c.charCodeAt(0));
+          if (update.length > 0) {
+            Y.applyUpdate(ydoc, update);
+          }
         } catch {
           if (import.meta.env.DEV) console.error('[Editor] Failed to apply Yjs CRDT update from API');
         }
-        apiYjsFallbackRef.current = null;
+      }
+      apiYjsFallbackRef.current = null;
+
+      // ── Read-write users: wait for IndexedDB to load cached data ──
+      // Read-only users skip this step — they never generate local edits, so
+      // IndexedDB only holds stale snapshots from previous WS sessions. Waiting
+      // on it adds unnecessary latency and risks loading outdated content that
+      // conflicts with the server CRDT applied above.
+      if (!readOnlyRef.current) {
+        try {
+          await persistence.whenSynced;
+        } catch { /* timeout */ }
+        if (cancelled) return;
+      } else {
+        // Read-only: destroy persistence immediately — we don't need IndexedDB
+        // caching for users who cannot edit. The server CRDT (applied above) +
+        // WS syncStep1 are the authoritative data sources.
+        persistence.destroy();
+        persistenceRef.current = null;
       }
 
       // Set up awareness for online user tracking
@@ -560,25 +630,44 @@ export function CollaborativeEditor({
       };
       awareness.on('change', notifyUsers);
 
-      // Wait for IndexedDB to load cached data (whenSynced is a built-in Promise)
-      try {
-        await persistence.whenSynced;
-      } catch {
-        /* timeout */
-      }
-      if (cancelled) return;
-
-      // Store API content for fallback — applied via Milkdown replaceAll() after editor mounts
+      // ── Store API content for fallback ──
+      // The API markdown is a last-resort fallback for cold-start docs where
+      // neither the server CRDT nor WS syncStep1 provide content.
       apiFallbackRef.current = loadedContent;
 
-      const url = buildWsUrl(wsUrl, documentId);
-      tokenRef.current = tokenStore.accessToken;
-      connectWs(url, ydoc, (event) => {
+      // ── Process a binary WS message (sync or awareness) ──
+      // Callable from the live WS handler and (if needed) from onReady.
+      const processBinaryMessage = (arr: Uint8Array) => {
+        const dec = decoding.createDecoder(arr);
+        const outerType = decoding.readVarUint(dec);
+        if (outerType === 0) {
+          // MESSAGE_SYNC — mark that WS has authoritative content
+          wsInitialSyncRef.current = true;
+          const enc = encoding.createEncoder();
+          encoding.writeVarUint(enc, 0); // MESSAGE_SYNC (for response)
+          readSyncMessage(dec, enc, ydoc, wsRef.current);
+          // Send sync response (syncStep2) if encoder has data
+          if (encoding.length(enc) > 1 && wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(encoding.toUint8Array(enc));
+          }
+        } else if (outerType === 1 && awareness) {
+          // MESSAGE_AWARENESS
+          awarenessProtocol.applyAwarenessUpdate(
+            awareness,
+            decoding.readVarUint8Array(dec),
+            wsRef.current
+          );
+        }
+      };
+
+      // ── Build WS message handler (runs after collab is bound) ──
+      // Defined here so it captures ydoc, awareness, wsRef from setup() closure.
+      // The handler is stored in a ref so deferredWsRef can pass it to connectWs.
+      const handleWsMessage = (event: MessageEvent) => {
         if (typeof event.data === 'string') {
           try {
             const m = JSON.parse(event.data);
             if (m.type === 'token-expiring') {
-              /* token expiring */
               const old = tokenRef.current;
               refreshAccessToken().then((nt) => {
                 if (nt && nt !== old) {
@@ -595,30 +684,28 @@ export function CollaborativeEditor({
           return;
         }
         try {
-          const arr = new Uint8Array(event.data as ArrayBuffer);
-          const dec = decoding.createDecoder(arr);
-          const outerType = decoding.readVarUint(dec);
-          if (outerType === 0) {
-            // MESSAGE_SYNC
-            const enc = encoding.createEncoder();
-            encoding.writeVarUint(enc, 0); // MESSAGE_SYNC (for response)
-            readSyncMessage(dec, enc, ydoc, wsRef.current);
-            // Send sync response (syncStep2) if encoder has data
-            if (encoding.length(enc) > 1 && wsRef.current?.readyState === WebSocket.OPEN) {
-              wsRef.current.send(encoding.toUint8Array(enc));
-            }
-          } else if (outerType === 1 && awareness) {
-            // MESSAGE_AWARENESS
-            awarenessProtocol.applyAwarenessUpdate(
-              awareness,
-              decoding.readVarUint8Array(dec),
-              wsRef.current
-            );
-          }
-        } catch {
-          if (import.meta.env.DEV) console.error('[Editor] Sync apply failed');
+          processBinaryMessage(new Uint8Array(event.data as ArrayBuffer));
+        } catch (err) {
+          console.error('[Editor] Sync apply failed:', (err as Error).message);
         }
-      });
+      };
+      wsMsgHandlerRef.current = handleWsMessage;
+      processBinaryMsgRef.current = processBinaryMessage;
+
+      // ── Defer WS connection to onReady (collab-bound) ──
+      // Connecting WS here (before React renders MilkdownInner) creates a race:
+      // syncStep1 can arrive before the collab plugin's bindDoc().connect()
+      // finishes. When that happens, ydoc absorbs the update but ProseMirror
+      // never displays it → blank editor.
+      //
+      // By deferring to onReady, we guarantee: collab binds → WS connects →
+      // syncStep1 arrives → collab plugin receives the update correctly.
+      // syncStep1 from the CLIENT side is sent in connectWs's onopen handler.
+      deferredWsRef.current = () => {
+        const url = buildWsUrl(wsUrl, documentId);
+        tokenRef.current = tokenStore.accessToken;
+        connectWs(url, ydoc, handleWsMessage);
+      };
 
       // Send local ydoc changes to WebSocket (skip updates originating from the server)
       ydoc.on('update', (update: Uint8Array, origin: unknown) => {
@@ -708,6 +795,13 @@ export function CollaborativeEditor({
         if (aw) aw.destroy();
         if (p) p.destroy();
         if (y) y.destroy();
+        // ── Read-only cleanup: delete stale IndexedDB cache ──
+        // Read-only users never generate local edits; their IndexedDB only
+        // holds snapshots from previous WS sessions. Deleting prevents
+        // stale cached data from interfering with the next session load.
+        if (readOnlyRef.current) {
+          try { indexedDB.deleteDatabase(`doc-${documentId}`); } catch {}
+        }
       };
       window.addEventListener('pagehide', onPageHide, { once: true });
 
@@ -720,25 +814,16 @@ export function CollaborativeEditor({
         if (aw) aw.destroy();
         if (p) p.destroy();
         if (y) y.destroy();
+        if (readOnlyRef.current) {
+          try { indexedDB.deleteDatabase(`doc-${documentId}`); } catch {}
+        }
       }, 50);
     };
   // oxlint-disable-next-line react-hooks/exhaustive-deps — connectWs/switchConnection stabilized above
   }, [documentId, wsUrl]);
 
-  // Forward token refreshes to the collaboration WebSocket (resets server-side expiry timer)
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const token = (e as CustomEvent<string>).detail;
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ type: 'token-refreshed', accessToken: token }));
-      }
-    };
-    window.addEventListener('token-refreshed', handler);
-    return () => window.removeEventListener('token-refreshed', handler);
-  }, []);
-
-  return (
-    <div className="relative h-full w-full">
+	  return (
+	    <div className="relative h-full w-full">
       <div ref={editorRef} className="h-full w-full overflow-auto milkdown-editor">
         {!isLoading && ydocRef.current && (
           <EditorErrorBoundary>
@@ -750,16 +835,77 @@ export function CollaborativeEditor({
                 documentId={documentId}
                 readOnly={readOnly}
                 onReady={(editor) => {
-                  // Apply API fallback content if editor is empty (no IndexedDB data)
+                  // ── Collab is now bound — connect WS ──
+                  // The WS connection was deferred from setup() to guarantee
+                  // collab.bindDoc().connect() runs first. When syncStep1
+                  // arrives now, the collab plugin is already listening and
+                  // will correctly sync ydoc content to ProseMirror.
+                  deferredWsRef.current?.();
+                  deferredWsRef.current = null; // one-shot
+
+                  // ── Content availability check ──
+                  // Two stages: (1) wait for WS syncStep1 (~100ms on localhost),
+                  // (2) if still blank, apply API markdown fallback.
+                  // If the ydoc already has content from server CRDT (applied in
+                  // setup), bindDoc() in collab.connect() should have displayed it
+                  // by now — no fallback needed.
+                  const thisMount = mountGenRef.current;
                   const fallback = apiFallbackRef.current;
-                  if (fallback) {
-                    const md = editor.action(getMarkdown());
-                    if (!md || md.trim() === '') {
-                      editor.action(replaceAll(fallback));
-                      if (onContentChange) onContentChange(fallback);
+                  // Stage 1: fast check after WS syncStep1 has time to arrive
+                  setTimeout(() => {
+                    // Skip if a new setup() has started (document switch / remount)
+                    if (mountGenRef.current !== thisMount) return;
+                    if (!editorRef.current) return;
+                    try {
+                      const md = editor.action(getMarkdown());
+                      if (md && md.trim() !== '') return; // content is visible ✓
+                    } catch { /* editor might not support getMarkdown yet */ }
+
+                    // Stage 1 fallback: API markdown (non-CRDT docs)
+                    if (fallback && fallback.trim() !== '') {
+                      try {
+                        editor.action(replaceAll(fallback));
+                        if (onContentChange) onContentChange(fallback);
+                        apiFallbackRef.current = '';
+                        return;
+                      } catch { /* replaceAll may fail */ }
                     }
-                    apiFallbackRef.current = ''; // only apply once
-                  }
+
+                    // Stage 2: wait longer for WS syncStep1 (CRDT docs with
+                    // slow WS connection or server restart re-sync)
+                    setTimeout(() => {
+                      if (mountGenRef.current !== thisMount) return;
+                      if (!editorRef.current) return;
+                      try {
+                        const md = editor.action(getMarkdown());
+                        if (md && md.trim() !== '') return; // content arrived ✓
+                      } catch {}
+
+                      // Force collab to re-read ydoc state (handles edge cases
+                      // where ydoc has content but ProseMirror didn't sync).
+                      try {
+                        const svc = editor.ctx.get(collabServiceCtx);
+                        svc.disconnect();
+                        svc.connect();
+                      } catch { /* collab service might not be available */ }
+
+                      // Check again after forced re-sync
+                      try {
+                        const md2 = editor.action(getMarkdown());
+                        if (md2 && md2.trim() !== '') return; // re-sync worked ✓
+                      } catch {}
+
+                      // Last resort: API fallback (if available after Stage 2 check)
+                      const fb = apiFallbackRef.current;
+                      if (fb && fb.trim() !== '') {
+                        try {
+                          editor.action(replaceAll(fb));
+                          if (onContentChange) onContentChange(fb);
+                        } catch {}
+                      }
+                      apiFallbackRef.current = '';
+                    }, 5000); // 5s total for WS to deliver syncStep1
+                  }, 300);
                 }}
                 onMarkdownChange={(md) => {
                   pendingMarkdownRef.current = md;

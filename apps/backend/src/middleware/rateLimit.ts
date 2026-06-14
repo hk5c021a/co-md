@@ -1,5 +1,6 @@
 import type { Context, Next } from 'hono';
 import { redis } from '../db/redis.js';
+import { logger } from '../lib/logger.js';
 
 interface RateLimitConfig {
   maxRequests: number;
@@ -15,6 +16,11 @@ const searchRateLimitConfig: RateLimitConfig = {
   maxRequests: 10,
   windowSeconds: 60,
 };
+
+// Track consecutive Redis failures to avoid log flooding while still
+// alerting when the rate limiter has been degraded for an extended period.
+let consecutiveFailures = 0;
+const MAX_FAILURES_BEFORE_ALERT = 5;
 
 export function rateLimitMiddleware(config: RateLimitConfig = defaultConfig) {
   return async (c: Context, next: Next) => {
@@ -34,6 +40,9 @@ export function rateLimitMiddleware(config: RateLimitConfig = defaultConfig) {
       c.header('X-RateLimit-Remaining', String(Math.max(0, config.maxRequests - current)));
       c.header('X-RateLimit-Reset', String(Math.floor(Date.now() / 1000) + ttl));
 
+      // Reset consecutive failure counter on success
+      consecutiveFailures = 0;
+
       if (current > config.maxRequests) {
         return c.json(
           {
@@ -49,8 +58,21 @@ export function rateLimitMiddleware(config: RateLimitConfig = defaultConfig) {
 
       await next();
     } catch (err) {
-      // If Redis fails, allow the request but log the error
-      console.error('Rate limit check failed:', err);
+      // If Redis fails, allow the request (fail-open for availability)
+      // but track consecutive failures for alerting
+      consecutiveFailures++;
+      if (consecutiveFailures === MAX_FAILURES_BEFORE_ALERT) {
+        logger.error(
+          `Rate limiter: Redis failures reached threshold (${consecutiveFailures})`,
+          err instanceof Error ? err : undefined,
+          { service: 'rate-limiter', consecutiveFailures }
+        );
+      } else if (consecutiveFailures > MAX_FAILURES_BEFORE_ALERT && consecutiveFailures % 50 === 0) {
+        logger.warn(`Rate limiter: still degraded (${consecutiveFailures} consecutive failures)`, {
+          service: 'rate-limiter',
+          consecutiveFailures,
+        });
+      }
       await next();
     }
   };

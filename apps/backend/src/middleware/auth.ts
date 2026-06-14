@@ -1,8 +1,14 @@
 import type { Context, Next } from 'hono';
 import * as jose from 'jose';
 
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback-secret-for-dev');
-const JWT_REFRESH_SECRET = new TextEncoder().encode(process.env.JWT_REFRESH_SECRET || 'fallback-refresh-secret-for-dev');
+const _jwtSecret = process.env.JWT_SECRET;
+if (!_jwtSecret || _jwtSecret.length < 32) {
+  throw new Error('JWT_SECRET environment variable must be set (>= 32 characters)');
+}
+const JWT_SECRET = new TextEncoder().encode(_jwtSecret);
+const JWT_REFRESH_SECRET = new TextEncoder().encode(
+  process.env.JWT_REFRESH_SECRET || _jwtSecret
+);
 
 export interface JWTPayload {
   sub: string; // user ID

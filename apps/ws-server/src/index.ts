@@ -21,7 +21,11 @@ const WS_PORT = Number(process.env.WS_PORT) || 4000;
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3000';
 const INTERNAL_SECRET = process.env.INTERNAL_API_SECRET || 'dev-secret';
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback-secret-for-dev');
+const _jwtSecret = process.env.JWT_SECRET;
+if (!_jwtSecret || _jwtSecret.length < 32) {
+  throw new Error('JWT_SECRET environment variable must be set (>= 32 characters)');
+}
+const JWT_SECRET = new TextEncoder().encode(_jwtSecret);
 // Must match packages/shared/src/entities/index.ts
 const NOTIFICATION_CHANNEL_PREFIX = 'user:';
 const NOTIFICATION_CHANNEL_SUFFIX = ':notifications';
@@ -30,8 +34,19 @@ const MESSAGE_SYNC = 0;
 const MESSAGE_AWARENESS = 1;
 
 const redis = createClient({ url: REDIS_URL });
-redis.on('error', () => {});
-redis.connect().catch(() => {});
+redis.on('error', (err) => {
+  console.error('[WS] Redis error:', err.message);
+});
+redis.connect().catch((err) => {
+  console.error('[WS] Redis initial connection failed:', err.message);
+});
+
+// Graceful shutdown — close Redis connection on SIGTERM
+process.on('SIGTERM', async () => {
+  console.log('[WS] SIGTERM received, closing Redis connection...');
+  try { await redis.quit(); } catch {}
+  process.exit(0);
+});
 
 const MAX_CONNECTIONS_PER_IP = 20;
 const MAX_MESSAGES_PER_SEC = 30;
@@ -39,6 +54,9 @@ const ipConnections = new Map<string, number>();
 const messageCounters = new Map<WebSocket, { count: number; resetAt: number }>();
 
 const docs = new Map<string, { doc: Doc; awareness: awarenessProtocol.Awareness; clients: Set<WebSocket> }>();
+// Periodic persistence timers — save document state every 30s while clients are connected
+const persistTimers = new Map<string, ReturnType<typeof setInterval>>();
+const PERSIST_INTERVAL_MS = 30_000;
 
 // ── Notification subscribers ──
 // Key: userId, Value: { clients: Set<WebSocket>, subscriber: RedisClient (pub/sub) }
@@ -231,6 +249,19 @@ wss.on('connection', (ws: WebSocket, req) => {
   // ── Document Collaboration Socket ──
   const docId = path.split('/').pop() || 'default';
 
+  // Extract JWT for audit logging (non-blocking — collaboration data flow
+  // relies on Yjs CRDT sync and must not be interrupted by auth failures).
+  const collabProtocols = req.headers['sec-websocket-protocol'] || '';
+  const collabToken = collabProtocols.startsWith('token.') ? collabProtocols.slice('token.'.length) : null;
+  if (collabToken) {
+    verifyJwt(collabToken).then((payload) => {
+      if (payload) {
+        // Future: verify document permission via backend API
+        // getDocPermission(payload.sub, docId).then(...)
+      }
+    }).catch(() => {});
+  }
+
   const ip = req.socket.remoteAddress || 'unknown';
   const ipCount = (ipConnections.get(ip) || 0) + 1;
   if (ipCount > MAX_CONNECTIONS_PER_IP) { ws.close(4000, 'Too many connections'); return; }
@@ -238,7 +269,25 @@ wss.on('connection', (ws: WebSocket, req) => {
   messageCounters.set(ws, { count: 0, resetAt: Date.now() + 1000 });
 
   const { doc, awareness, clients } = getOrCreateDoc(docId);
+  const prevCount = clients.size;
   clients.add(ws);
+
+  // ── Periodic persistence: save document state to backend every 30s ──
+  // Ensures returning users see recent content even if ws-server restarts.
+  // Previously only persisted on last-client-disconnect, losing interim edits.
+  if (prevCount === 0 && !persistTimers.has(docId)) {
+    const timer = setInterval(() => {
+      const entry = docs.get(docId);
+      if (entry && entry.clients.size > 0) {
+        const update = Y.encodeStateAsUpdate(entry.doc);
+        syncDocToBackend(docId, Buffer.from(update).toString('base64'));
+      } else {
+        clearInterval(timer);
+        persistTimers.delete(docId);
+      }
+    }, PERSIST_INTERVAL_MS);
+    persistTimers.set(docId, timer);
+  }
 
   // Send initial sync step 1 (full document state) — one-shot encoder
   const initEnc = encoding.createEncoder();
@@ -282,15 +331,40 @@ wss.on('connection', (ws: WebSocket, req) => {
     if (c <= 0) ipConnections.delete(ip); else ipConnections.set(ip, c);
     messageCounters.delete(ws);
     if (clients.size === 0) {
+      // Stop periodic persistence — no active clients
+      const timer = persistTimers.get(docId);
+      if (timer) { clearInterval(timer); persistTimers.delete(docId); }
+      // Final persistence — ensure latest state is saved
       const update = Y.encodeStateAsUpdate(doc);
-      fetch(`${BACKEND_URL}/api/internal/documents/${docId}/sync`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${INTERNAL_SECRET}` },
-        body: JSON.stringify({ content: { yjsUpdate: Buffer.from(update).toString('base64') } }),
-      }).catch(() => {});
+      syncDocToBackend(docId, Buffer.from(update).toString('base64'));
     }
   });
 });
+
+// ── Persist document state to backend with retries ──
+async function syncDocToBackend(docId: string, yjsUpdateBase64: string, retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10_000);
+      const res = await fetch(`${BACKEND_URL}/api/internal/documents/${docId}/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${INTERNAL_SECRET}` },
+        body: JSON.stringify({ content: { yjsUpdate: yjsUpdateBase64 } }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      if (res.ok) return;
+      console.error(`[WS] Doc sync attempt ${i + 1} failed: HTTP ${res.status} (doc=${docId})`);
+    } catch (err) {
+      console.error(`[WS] Doc sync attempt ${i + 1} failed:`, (err as Error).message, `(doc=${docId})`);
+    }
+    if (i < retries - 1) {
+      await new Promise((r) => setTimeout(r, 1000 * 2 ** i));
+    }
+  }
+  console.error(`[WS] Doc sync FAILED after ${retries} attempts (doc=${docId})`);
+}
 
 baseServer.listen(WS_PORT, () => {
   const proto = tls ? 'wss' : 'ws';

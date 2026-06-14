@@ -1,4 +1,4 @@
-import bcrypt from 'bcryptjs';
+import { hashPassword, verifyPassword } from '../lib/password.js';
 import { randomBytes } from 'node:crypto';
 import { userRepository, sessionRepository, contactRepository } from '../repositories/index.js';
 import { delTokensByUserId, blacklistSession } from '../db/redis.js';
@@ -94,7 +94,8 @@ export class UserService {
   async verifyPassword(userId: string, passwordHash: string): Promise<boolean> {
     const user = await userRepository.findById(userId);
     if (!user) return false;
-    return bcrypt.compare(passwordHash, user.passwordHash);
+    const result = await verifyPassword(passwordHash, user.passwordHash);
+    return result.valid;
   }
 
   async changePassword(userId: string, data: ChangePasswordData): Promise<void> {
@@ -108,16 +109,16 @@ export class UserService {
       throw new UserError('PASSWORD_NOT_DIFFERENT', 'New password must differ from the current password');
     }
 
-    // Verify old PBKDF2 hash against stored bcrypt hash (must use bcrypt here
-    // because registration and login both use bcrypt — mixing with argon2 would
-    // make verification fail on every call).
-    const isValid = await bcrypt.compare(data.oldPasswordHash, user.passwordHash);
-    if (!isValid) {
+    // Verify old PBKDF2 hash against stored hash using unified verifier
+    // (supports both legacy bcrypt and current argon2 hashes)
+    const verifyResult = await verifyPassword(data.oldPasswordHash, user.passwordHash);
+    if (!verifyResult.valid) {
       throw new UserError('INVALID_PASSWORD', 'Current password is incorrect');
     }
 
-    // bcrypt hash the new PBKDF2 hash for storage (same algorithm as registration)
-    const storedHash = await bcrypt.hash(data.newPasswordHash, 10);
+    // Hash the new PBKDF2 hash with argon2id for storage
+    const storedHash = await hashPassword(data.newPasswordHash);
+    // If old hash was legacy bcrypt, this automatically upgrades it to argon2
     // Collect session IDs before deletion (for token blacklisting)
     const userSessions = await db.select({ id: sessions.id }).from(sessions).where(eq(sessions.userId, userId));
     // Update password + salt + invalidate sessions atomically.

@@ -225,6 +225,7 @@ const en = {
     noInvitations: 'No pending invitations',
     invitationFrom: 'From {{name}}',
     contactRemovedToast: '{{name}} removed you from contacts',
+    documentDeletedToast: 'The document "{{title}}" has been deleted by the owner',
     invitationReceived: 'Received',
     invitationExpires: 'Expires',
     invitationFailed: 'Failed to send invitation',

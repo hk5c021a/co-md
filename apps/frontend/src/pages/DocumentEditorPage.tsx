@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, createElement, type ComponentType } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams, useNavigate } from 'react-router-dom';
-import { CollaborativeEditor } from '../components/Editor/Editor';
+import type { CollaborativeEditor as CollaborativeEditorType } from '../components/Editor/Editor';
 import { useToken } from '../hooks/useToken';
 import { useUser } from '../hooks/useApi';
 import { useNotificationSocket } from '../hooks/useNotificationSocket';
@@ -26,6 +26,40 @@ import type { OnlineUser } from '../types/models';
 
 interface DocumentEditorPageProps {
   fileId?: string;
+}
+
+// ── Lazy-load the editor engine (~1.4MB) separately from the page chrome ──
+// The page sidebar, toolbar, and layout render immediately while the Milkdown
+// editor bundle downloads. Module-level cache ensures the import only happens once.
+let _EditorEngine: ComponentType<any> | null = null;
+let _EditorEnginePromise: Promise<ComponentType<any>> | null = null;
+
+function LazyCollaborativeEditor(props: Record<string, unknown>) {
+  const [Comp, setComp] = useState<ComponentType<any> | null>(() => _EditorEngine);
+  useEffect(() => {
+    if (_EditorEngine) return;
+    let cancelled = false;
+    if (!_EditorEnginePromise) {
+      _EditorEnginePromise = import('../components/Editor/Editor').then((m) => {
+        _EditorEngine = m.CollaborativeEditor;
+        return m.CollaborativeEditor;
+      });
+    }
+    _EditorEnginePromise.then((c) => {
+      if (!cancelled) setComp(() => c);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  if (!Comp) {
+    return createElement(
+      'div',
+      { className: 'flex flex-col items-center justify-center h-full gap-3 text-text-secondary dark:text-zinc-400' },
+      createElement(PageSpinner),
+      createElement('span', { className: 'text-sm' }, 'Loading editor…')
+    );
+  }
+  return createElement(Comp, props);
 }
 
 export function DocumentEditorPage({ fileId: propFileId }: DocumentEditorPageProps = {}) {
@@ -77,15 +111,28 @@ export function DocumentEditorPage({ fileId: propFileId }: DocumentEditorPagePro
     document.addEventListener('mouseup', onUp);
   }, [sidebarWidth]);
 
-  // Notification WebSocket — handles permission changes in real-time
+  // Notification WebSocket — handles permission changes + document deletion in real-time
   useNotificationSocket((msg) => {
     if (msg.data.documentId === fileId) {
       if (msg.type === 'permission-revoked') {
+        // Immediately set permission to revoked so the editor switches to read-only
+        setPermissionLevel('revoked');
         setPermModal({ type: msg.type, documentTitle: String(msg.data.documentTitle || '') });
         addToast(t('home.permissionRevokedToast', { title: msg.data.documentTitle }), 'warning');
       } else if (msg.type === 'permission-changed') {
+        // Re-fetch the new permission level from the server
         setPermModal({ type: msg.type, documentTitle: String(msg.data.documentTitle || '') });
         addToast(t('home.permissionChangedToast', { title: msg.data.documentTitle }), 'info');
+        apiFetch(`/api/permissions/${fileId}/access`)
+          .then((r) => r.json())
+          .then((j) => {
+            if (j.success && j.data) setPermissionLevel(j.data.level);
+          })
+          .catch(() => setPermissionLevel('read-only')); // safety fallback
+      } else if (msg.type === 'document-deleted') {
+        // Document was deleted by the owner — redirect immediately
+        addToast(t('home.documentDeletedToast', { title: msg.data.documentTitle || '' }), 'warning');
+        navigate('/', { replace: true });
       }
     }
   });
@@ -260,7 +307,7 @@ export function DocumentEditorPage({ fileId: propFileId }: DocumentEditorPagePro
 
         {/* Editor Panel */}
         <div className="flex-1 overflow-hidden flex flex-col">
-          <CollaborativeEditor
+          <LazyCollaborativeEditor
             documentId={fileId}
             language={language}
             userName={currentUser?.username}

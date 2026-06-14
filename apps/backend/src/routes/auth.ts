@@ -3,7 +3,7 @@ import type { Context } from 'hono';
 import { db } from '../db/index.js';
 import { users, sessions } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
-import bcrypt from 'bcryptjs';
+import { hashPassword, verifyPassword } from '../lib/password.js';
 import { randomUUID, randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import {
@@ -194,7 +194,7 @@ app.post('/register', async (c: Context) => {
       );
     }
 
-    const passwordHash = await bcrypt.hash(validated.passwordHash, 10);
+    const passwordHash = await hashPassword(validated.passwordHash);
     const userId = randomUUID();
     const now = new Date();
 
@@ -291,7 +291,7 @@ app.post('/login', async (c: Context) => {
       );
     }
 
-    const validPassword = await bcrypt.compare(validated.passwordHash, phoneUser.passwordHash);
+    const { valid: validPassword, needsRehash } = await verifyPassword(validated.passwordHash, phoneUser.passwordHash);
 
     if (!validPassword) {
       return c.json(
@@ -301,6 +301,12 @@ app.post('/login', async (c: Context) => {
         },
         401
       );
+    }
+
+    // Upgrade legacy bcrypt hash to argon2id on successful login
+    if (needsRehash) {
+      const upgradedHash = await hashPassword(validated.passwordHash);
+      await db.update(users).set({ passwordHash: upgradedHash }).where(eq(users.id, phoneUser.id));
     }
 
     // Delete existing sessions (single session mode)
@@ -459,10 +465,10 @@ app.post('/password-reset/request', async (c: Context) => {
       });
     }
 
-    // Generate a cryptographically random reset token + store in Redis (15 min TTL)
+    // Generate a cryptographically random reset token + store in Redis (1 hour TTL)
     const token = randomBytes(32).toString('hex');
     const key = `pwd_reset:${token}`;
-    await redis.set(key, user.id, { EX: 900 }); // 15 minutes
+    await redis.set(key, user.id, { EX: 3600 }); // 1 hour
 
     // Send password reset email (fire-and-forget — failure logged but not exposed)
     const lang = validated.lang || 'en';
@@ -511,7 +517,7 @@ app.post('/password-reset/check', async (c: Context) => {
     if (!userId) return c.json({ success: true, data: { same: false } }); // token invalid, just say no
     const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
     if (!user) return c.json({ success: true, data: { same: false } });
-    const isSame = await bcrypt.compare(String(passwordHash), user.passwordHash);
+    const { valid: isSame } = await verifyPassword(String(passwordHash), user.passwordHash);
     return c.json({ success: true, data: { same: isSame } });
   } catch {
     return c.json({ success: true, data: { same: false } });
@@ -552,7 +558,7 @@ app.post('/password-reset/confirm', async (c: Context) => {
     }
 
     // Reject if the new password matches the current one (same PBKDF2 salt used on frontend)
-    const isSamePassword = await bcrypt.compare(validated.newPasswordHash, user.passwordHash);
+    const { valid: isSamePassword, needsRehash: pwNeedsRehash } = await verifyPassword(validated.newPasswordHash, user.passwordHash);
     if (isSamePassword) {
       return c.json(
         { success: false, error: { code: 'SAME_PASSWORD', message: 'New password must differ from the current password' } },
@@ -560,8 +566,9 @@ app.post('/password-reset/confirm', async (c: Context) => {
       );
     }
 
-    // Hash the new PBKDF2 hash with bcrypt and update the user record
-    const storedHash = await bcrypt.hash(validated.newPasswordHash, 10);
+    // Hash the new PBKDF2 hash with argon2id for storage
+    const storedHash = await hashPassword(validated.newPasswordHash);
+    // If old hash was legacy bcrypt, this automatically upgrades it to argon2
 
     // Invalidate all existing sessions so old tokens can't be used
     const userSessions = await db.select({ id: sessions.id }).from(sessions).where(eq(sessions.userId, userId));

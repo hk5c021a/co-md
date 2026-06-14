@@ -69,6 +69,12 @@ export function UserHomePage() {
           'warning'
         );
         break;
+      case 'document-deleted':
+        addToast(
+          t('home.documentDeletedToast', { title: msg.data.documentTitle || '' }),
+          'warning'
+        );
+        break;
     }
   });
 

@@ -2,8 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { auditLog } from '../lib/audit.js';
-import { documents } from '../db/schema.js';
+import { documents, documentFiles, permissions } from '../db/schema.js';
 import { documentRepository, permissionRepository } from '../repositories/index.js';
+import { deleteFromStorage } from '../lib/storage.js';
+import { logger } from '../lib/logger.js';
+import { publishUserNotification } from './notificationPublisher.js';
 import type { Document } from '../db/schema.js';
 
 export interface CreateDocumentData {
@@ -129,23 +132,61 @@ export class DocumentService {
   }
 
   async delete(id: string, userId: string): Promise<void> {
-    // Atomic DELETE WHERE id= AND ownerId= — prevents TOCTOU race
-    const result = await db
-      .delete(documents)
-      .where(and(eq(documents.id, id), eq(documents.ownerId, userId)))
-      .returning({ id: documents.id });
-
-    if (result.length === 0) {
-      const doc = await documentRepository.findById(id);
-      if (!doc) throw new DocumentError('NOT_FOUND', 'Document not found');
+    // ── Step 1: Verify ownership + existence ──
+    const doc = await documentRepository.findById(id);
+    if (!doc) throw new DocumentError('NOT_FOUND', 'Document not found');
+    if (doc.ownerId !== userId) {
       throw new DocumentError('ACCESS_DENIED', 'Only the owner can delete a document');
     }
+
+    // ── Step 2: Collect affected users BEFORE deleting permissions ──
+    // We need to notify everyone who had access so their UI updates in real-time.
+    const perms = await db
+      .select({ userId: permissions.userId })
+      .from(permissions)
+      .where(eq(permissions.documentId, id));
+    const affectedUsers = perms
+      .map((p) => p.userId)
+      .filter((uid) => uid !== userId); // owner handles their own UI via mutation
+
+    // ── Step 3: Clean up RustFS storage objects ──
+    const files = await db
+      .select({ objectKey: documentFiles.objectKey })
+      .from(documentFiles)
+      .where(eq(documentFiles.documentId, id));
+
+    for (const file of files) {
+      try {
+        await deleteFromStorage(file.objectKey);
+      } catch (err) {
+        logger.error(
+          { err, objectKey: file.objectKey, documentId: id },
+          'Failed to delete S3 object during document deletion'
+        );
+      }
+    }
+
+    // ── Step 4: Delete document (DB CASCADE handles permissions + document_files) ──
+    await db
+      .delete(documents)
+      .where(and(eq(documents.id, id), eq(documents.ownerId, userId)));
 
     auditLog('document.delete', {
       'audit.user_id': userId,
       'audit.resource_type': 'document',
       'audit.resource_id': id,
     });
+
+    // ── Step 5: Notify all affected users in real-time ──
+    // Fire-and-forget — notification failures don't roll back the deletion.
+    for (const uid of affectedUsers) {
+      publishUserNotification(uid, {
+        type: 'document-deleted',
+        data: { documentId: id, documentTitle: doc.title },
+      }).catch((err) =>
+        logger.error({ err, userId: uid, documentId: id }, 'Failed to notify user of document deletion')
+      );
+    }
   }
 
   async hasAccess(

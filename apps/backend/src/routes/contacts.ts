@@ -3,7 +3,7 @@ import type { Context } from 'hono';
 import { z } from 'zod';
 import { authMiddleware } from '../middleware/auth.js';
 import { contactService, ContactError } from '../services/index.js';
-import { pageSchema } from '@collab/shared';
+import { pageSchema } from '@co-md/shared';
 import { logger } from '../lib/logger.js';
 import { rateLimitMiddleware } from '../middleware/rateLimit.js';
 

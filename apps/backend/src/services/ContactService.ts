@@ -402,6 +402,20 @@ export class ContactService {
       },
     });
 
+    // Also notify the remover so their documents/permissions list updates.
+    // The mutation's onSuccess handles the contacts list, but the documents
+    // list (shared via permissions) needs cache invalidation via WS.
+    const removedUser = await userRepository.findById(contactUserId);
+    const removedName = removedUser?.username || 'Someone';
+    await publishUserNotification(userId, {
+      type: 'contact-removed',
+      data: {
+        removerId: userId,
+        removerUsername: removerName,
+        removedUsername: removedName,
+      },
+    });
+
     auditLog('contact.remove', {
       'audit.user_id': userId,
       'audit.target_user_id': contactUserId,

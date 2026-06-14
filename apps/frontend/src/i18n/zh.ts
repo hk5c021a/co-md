@@ -221,6 +221,7 @@ const zh = {
     noInvitations: '暂无待处理的邀请',
     invitationFrom: '来自 {{name}}',
     contactRemovedToast: '{{name}} 已将你从联系人中移除',
+    documentDeletedToast: '文档"{{title}}"已被创建者删除',
     invitationReceived: '接收时间',
     invitationExpires: '过期时间',
     invitationFailed: '邀请发送失败',

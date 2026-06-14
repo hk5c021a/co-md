@@ -72,7 +72,7 @@ function getTemplate(lang?: string) {
 export class EmailService {
   async sendPasswordResetEmail(to: string, username: string, resetToken: string, lang?: string): Promise<void> {
     const baseUrl = process.env.PASSWORD_RESET_BASE_URL || '';
-    const from = process.env.SMTP_FROM || 'noreply@collab.local';
+    const from = process.env.SMTP_FROM || 'noreply@co-md.local';
 
     if (!baseUrl) {
       throw new Error('PASSWORD_RESET_BASE_URL is not set — cannot send password reset email');

@@ -42,6 +42,7 @@ app.get('/documents/:id/permission/:userId', async (c: Context) => {
 
 const syncSchema = z.object({
   update: z.string().optional(),
+  content: z.object({ yjsUpdate: z.string() }).optional(),
 });
 
 // GET /api/internal/documents/:id/sync
@@ -86,11 +87,13 @@ app.post('/documents/:id/sync', async (c: Context) => {
   try {
     const body = await c.req.json();
     const validated = syncSchema.parse(body);
-    if (validated.update) {
+    // Accept both flat { update: "..." } and nested { content: { yjsUpdate: "..." } }
+    const yjsUpdate = validated.update || validated.content?.yjsUpdate || null;
+    if (yjsUpdate) {
       await db
         .update(documents)
         .set({
-          content: { yjsUpdate: validated.update, syncedAt: new Date().toISOString() },
+          content: { yjsUpdate, syncedAt: new Date().toISOString() },
           version: String(Date.now()),
           updatedAt: new Date(),
         })

@@ -2,8 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { DocumentService, DocumentError } from '../../src/services/DocumentService.js';
 
 // Mock db — use vi.hoisted so variables are available in the hoisted vi.mock factory
-const { mockDbDeleteReturning } = vi.hoisted(() => ({
+const { mockDbDeleteReturning, mockDbSelectWhere } = vi.hoisted(() => ({
   mockDbDeleteReturning: vi.fn(),
+  mockDbSelectWhere: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock('../../src/db/index.js', () => ({
@@ -11,6 +12,11 @@ vi.mock('../../src/db/index.js', () => ({
     delete: vi.fn(() => ({
       where: vi.fn(() => ({
         returning: mockDbDeleteReturning,
+      })),
+    })),
+    select: vi.fn(() => ({
+      from: vi.fn(() => ({
+        where: mockDbSelectWhere,
       })),
     })),
   },
@@ -277,7 +283,11 @@ describe('DocumentService', () => {
       const docId = 'doc-123';
       const userId = 'user-123';
 
-      mockDbDeleteReturning.mockResolvedValue([{ id: docId }]);
+      vi.mocked(documentRepository.findById).mockResolvedValue({
+        id: docId,
+        ownerId: userId,
+      } as any);
+      mockDbSelectWhere.mockResolvedValue([]); // no files to clean up
 
       await expect(documentService.delete(docId, userId)).resolves.not.toThrow();
     });

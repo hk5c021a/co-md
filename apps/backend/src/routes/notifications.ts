@@ -3,7 +3,7 @@ import type { Context } from 'hono';
 import { authMiddleware } from '../middleware/auth.js';
 import { notificationService, NotificationError } from '../services/index.js';
 import { logger } from '../lib/logger.js';
-import { pageSchema } from '@collab/shared';
+import { pageSchema } from '@co-md/shared';
 
 const app = new Hono();
 

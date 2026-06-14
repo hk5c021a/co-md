@@ -40,7 +40,7 @@ export function ContactPermissionDialog({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { data: permissions = [], isLoading } = useQuery<PermissionEntry[]>({
+  const { data: allPermissions = [], isLoading } = useQuery<PermissionEntry[]>({
     queryKey: ['contact-permissions', contactId],
     queryFn: async () => {
       const res = await apiFetch(`/api/permissions/contact/${contactId}`);
@@ -50,6 +50,14 @@ export function ContactPermissionDialog({
     },
     enabled: open && !!contactId,
   });
+
+  // Only show documents owned by the current user — these are the ones the
+  // current user shared with this contact. Documents shared by other owners
+  // are excluded; managing those requires the respective owner.
+  const permissions = useMemo(
+    () => allPermissions.filter((p) => p.isOwner),
+    [allPermissions]
+  );
 
   const filtered = useMemo(() => {
     if (!searchQuery.trim()) return permissions;

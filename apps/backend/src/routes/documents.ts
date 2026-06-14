@@ -3,7 +3,7 @@ import type { Context } from 'hono';
 import { z } from 'zod';
 import { authMiddleware } from '../middleware/auth.js';
 import { documentService, DocumentError } from '../services/index.js';
-import { pageSchema, createDocumentSchema, updateDocumentSchema } from '@collab/shared';
+import { pageSchema, createDocumentSchema, updateDocumentSchema } from '@co-md/shared';
 import { logger } from '../lib/logger.js';
 
 const app = new Hono();

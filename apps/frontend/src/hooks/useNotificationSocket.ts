@@ -11,6 +11,7 @@ interface NotificationMessage {
     | 'permission-granted'
     | 'permission-changed'
     | 'permission-revoked'
+    | 'document-deleted'
     | 'contact-invitation'
     | 'contact-added'
     | 'contact-removed';
@@ -71,6 +72,8 @@ export function useNotificationSocket(onNotification?: NotificationHandler) {
       try {
         const msg: NotificationMessage = JSON.parse(event.data as string);
         queryClient.invalidateQueries({ queryKey: ['notifications'] });
+
+        // Contact lifecycle events → refresh contacts + invitations
         if (
           msg.type === 'contact-invitation' ||
           msg.type === 'contact-added' ||
@@ -78,7 +81,22 @@ export function useNotificationSocket(onNotification?: NotificationHandler) {
         ) {
           queryClient.invalidateQueries({ queryKey: ['contacts'] });
           queryClient.invalidateQueries({ queryKey: ['contact-invitations'] });
-        } else {
+        }
+
+        // contact-removed also revokes all mutual document permissions —
+        // invalidate document caches so the affected user's list reflects reality
+        if (msg.type === 'contact-removed') {
+          queryClient.invalidateQueries({ queryKey: ['documents'] });
+          queryClient.invalidateQueries({ queryKey: ['user-permissions'] });
+        }
+
+        // Permission / document lifecycle events → refresh documents + permissions
+        if (
+          msg.type === 'permission-granted' ||
+          msg.type === 'permission-changed' ||
+          msg.type === 'permission-revoked' ||
+          msg.type === 'document-deleted'
+        ) {
           queryClient.invalidateQueries({ queryKey: ['documents'] });
           queryClient.invalidateQueries({ queryKey: ['user-permissions'] });
           const docId = msg.data?.documentId;
@@ -86,6 +104,7 @@ export function useNotificationSocket(onNotification?: NotificationHandler) {
             queryClient.invalidateQueries({ queryKey: ['permissions', docId] });
           }
         }
+
         handlerRef.current?.(msg);
       } catch {
         /* ignore malformed messages */

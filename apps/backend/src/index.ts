@@ -14,6 +14,8 @@ import { errorMiddleware } from './middleware/error.js';
 import { csrfMiddleware } from './middleware/csrf.js';
 import { rateLimitMiddleware } from './middleware/rateLimit.js';
 import { bodyLimitMiddleware } from './middleware/bodyLimit.js';
+import { tracingMiddleware } from './middleware/tracing.js';
+import { metricsMiddleware } from './middleware/metrics.js';
 import authRoute from './routes/auth.js';
 import documentsRoute from './routes/documents.js';
 import permissionsRoute from './routes/permissions.js';
@@ -24,9 +26,11 @@ import uploadRoute from './routes/upload.js';
 import filesRoute from './routes/files.js';
 import internalRoute from './routes/internal.js';
 import cspReportRoute from './routes/csp-report.js';
+import { register as metricsRegister } from './middleware/metrics.js';
 import { connectRedis, redis } from './db/redis.js';
 import { checkConnection } from './db/index.js';
 import { logger } from './lib/logger.js';
+import { startPeriodicCleanup } from './lib/cleanup.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -45,12 +49,42 @@ async function serveIndexWithNonce(c: Context) {
 
 const app = new Hono();
 
+// Hono onError handler — catches unhandled errors from all middleware/routes.
+// Body parse errors (invalid JSON) return 400; everything else returns 500.
+app.onError((err, c) => {
+  const msg = err instanceof Error ? err.message : '';
+  const errName = err instanceof Error ? err.constructor.name : '';
+  const isBodyParseError =
+    errName === 'SyntaxError' ||
+    msg.includes('Unexpected token') ||
+    msg.includes('JSON') ||
+    msg.includes('not valid JSON');
+
+  console.error(JSON.stringify({
+    timestamp: new Date().toISOString(),
+    type: 'error',
+    errorType: errName || typeof err,
+    message: msg || 'Unknown error',
+    isBodyParseError,
+    stack: err instanceof Error ? err.stack?.split('\n').slice(0, 3).join('\n') : undefined,
+    path: c.req.path,
+    method: c.req.method,
+  }));
+
+  if (isBodyParseError) {
+    return c.json({ success: false, error: { code: 'BAD_REQUEST', message: 'Invalid request body' } }, 400);
+  }
+  return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred' } }, 500);
+});
+
 app.use('*', cors({
   origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
   allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
 }));
+app.use('*', tracingMiddleware);
+app.use('*', metricsMiddleware);
 app.use('*', loggerMiddleware);
 app.use('*', errorMiddleware);
 app.use('*', bodyLimitMiddleware());
@@ -59,7 +93,9 @@ app.use('*', csrfMiddleware);
 
 // Rate limit auth state-changing endpoints (login, register, password-reset).
 // Excludes read-only endpoints (captcha, salt) which are called frequently.
-const authLimit = rateLimitMiddleware({ maxRequests: 30, windowSeconds: 60 });
+// Rate limit for auth endpoints — configurable for E2E test concurrency
+const authRateLimitMax = parseInt(process.env.RATE_LIMIT_AUTH_MAX || '30', 10);
+const authLimit = rateLimitMiddleware({ maxRequests: authRateLimitMax, windowSeconds: 60 });
 app.use('/api/auth/register', authLimit);
 app.use('/api/auth/login', authLimit);
 app.use('/api/auth/refresh', authLimit);
@@ -77,6 +113,12 @@ app.route('/api/users', usersRoute);
 app.route('/api/upload', uploadRoute);
 app.route('/api/files', filesRoute);
 app.route('/api/internal', internalRoute);
+
+// Prometheus metrics — accessible at /metrics
+app.get('/metrics', async (c) => {
+  c.header('Content-Type', metricsRegister.contentType);
+  return c.body(await metricsRegister.metrics());
+});
 
 app.get('/health', async (c) => {
   const dbOk = await checkConnection().catch(() => false);
@@ -162,6 +204,9 @@ process.on('unhandledRejection', (reason) => {
 async function start() {
   await connectRedis();
   logger.info('Redis connected');
+
+  // Start periodic cleanup (expired sessions, invitations, password-reset tokens)
+  startPeriodicCleanup();
 
   const tls = getTlsOptions();
   if (tls) {
