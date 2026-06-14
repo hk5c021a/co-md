@@ -44,7 +44,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'pnpm'
 
       - run: pnpm install --frozen-lockfile
@@ -100,18 +100,18 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'pnpm'
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Run database migrations
-        run: pnpm --filter backend db:migrate
+      - name: Push database schema
+        run: pnpm --filter @co-md/backend db:push
         env:
           DATABASE_URL: 'postgresql://test:test@localhost:5432/test'
 
       - name: Run integration tests
-        run: pnpm --filter backend test:integration
+        run: pnpm --filter @co-md/backend test:integration
         env:
           JWT_SECRET: 'ci-test-secret-at-least-32-chars!!'
           DATABASE_URL: 'postgresql://test:test@localhost:5432/test'
