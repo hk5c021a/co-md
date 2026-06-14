@@ -1,16 +1,11 @@
-import { useState, useEffect, createElement } from 'react';
+import { createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TokenProvider, useToken } from './hooks/useToken';
 import { ToastProvider } from './components/ui/toast';
-import { AuthPage } from './pages/AuthPage';
-import { UserHomePage } from './pages/UserHomePage';
-import { PasswordResetPage } from './pages/PasswordResetPage';
-import { NotFoundPage } from './pages/NotFoundPage';
-import { ForbiddenPage } from './pages/ForbiddenPage';
-import { Spinner } from './components/ui/spinner';
 import { PageSpinner } from './components/ui/spinner';
+import { createLazyPage } from './lib/lazyPage';
 import './i18n';
 import './globals.css';
 
@@ -25,49 +20,28 @@ window.addEventListener('error', (event) => {
   console.error('[APP] Uncaught error:', event.error || event.message);
 });
 
-// ── Manual lazy-load for the editor chunk (~1.5MB) ──
-// Uses useState + useEffect instead of React.lazy() + Suspense to avoid
-// React error #306 (Invalid hook call) triggered by tokenStore Worker
-// message -> state update during a Suspense transition.
-let _EditorModule: React.ComponentType<any> | null = null;
-let _EditorPromise: Promise<React.ComponentType<any>> | null = null;
+// ── Route-level lazy loading ──
+// All page components are lazy-loaded via createLazyPage() to keep the
+// initial bundle small (~350KB). Only the DocumentEditorPage was lazy before;
+// now AuthPage, UserHomePage, PasswordResetPage, ForbiddenPage, and
+// NotFoundPage are also split into their own chunks.
 
-function LazyEditor() {
-  const [Comp, setComp] = useState<React.ComponentType<any> | null>(() => _EditorModule);
-  useEffect(() => {
-    if (_EditorModule) return;
-    let cancelled = false;
-    if (!_EditorPromise) {
-      _EditorPromise = import('./pages/DocumentEditorPage').then(m => m.DocumentEditorPage);
-    }
-    _EditorPromise.then(mod => {
-      if (cancelled) return;
-      _EditorModule = mod;
-      setComp(() => mod);
-    });
-    return () => { cancelled = true; };
-  }, []);
-
-  if (!Comp) {
-    return createElement('div', {
-      className: 'flex flex-col items-center justify-center min-h-dvh gap-4',
-    },
-      createElement(Spinner, { size: 'lg' }),
-      createElement('p', {
-        className: 'text-sm text-text-secondary dark:text-zinc-400',
-      }, 'Loading editor…'));
-  }
-  return createElement(Comp);
-}
+const LazyAuthPage = createLazyPage(() => import('./pages/AuthPage').then(m => m.AuthPage), 'Login');
+const LazyHomePage = createLazyPage(() => import('./pages/UserHomePage').then(m => m.UserHomePage), 'Home');
+const LazyEditorPage = createLazyPage(() => import('./pages/DocumentEditorPage').then(m => m.DocumentEditorPage), 'Editor');
+const LazyPasswordResetPage = createLazyPage(() => import('./pages/PasswordResetPage').then(m => m.PasswordResetPage), 'Password Reset');
+const LazyForbiddenPage = createLazyPage(() => import('./pages/ForbiddenPage').then(m => m.ForbiddenPage), '403');
+const LazyNotFoundPage = createLazyPage(() => import('./pages/NotFoundPage').then(m => m.NotFoundPage), '404');
 
 // ── AuthGuard — redirects unauthenticated users BEFORE lazy chunk download ──
-// Previously the auth check was inside DocumentEditorPage (inside the 1.8MB lazy chunk),
-// forcing unauthenticated users to download the entire editor before being redirected.
+// The auth check runs synchronously inside the guard, which is rendered BEFORE
+// the lazy page component. This means unauthenticated users are redirected
+// without ever downloading the editor chunk (~1.5MB) or any other protected chunk.
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isAuthLoading } = useToken();
   if (isAuthLoading) return <PageSpinner />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
-  return <>{children}</>;
+  return createElement('div', null, children);
 }
 
 // ── Trusted Types — CSP enforcement for XSS prevention ──
@@ -99,12 +73,12 @@ const queryClient = new QueryClient({
 });
 
 const router = createBrowserRouter([
-  { path: '/', element: <UserHomePage /> },
-  { path: '/login', element: <AuthPage /> },
-  { path: '/editor/:fileId?', element: <AuthGuard><LazyEditor /></AuthGuard> },
-  { path: '/password-reset/:token?', element: <PasswordResetPage /> },
-  { path: '/403', element: <ForbiddenPage /> },
-  { path: '*', element: <NotFoundPage /> },
+  { path: '/', element: createElement(LazyHomePage) },
+  { path: '/login', element: createElement(LazyAuthPage) },
+  { path: '/editor/:fileId?', element: createElement(AuthGuard, { children: createElement(LazyEditorPage) }) },
+  { path: '/password-reset/:token?', element: createElement(LazyPasswordResetPage) },
+  { path: '/403', element: createElement(LazyForbiddenPage) },
+  { path: '*', element: createElement(LazyNotFoundPage) },
 ]);
 
 // Await token decryption before rendering — AuthGuard needs the IndexedDB

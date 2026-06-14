@@ -1,20 +1,28 @@
 import type { FullConfig } from '@playwright/test';
+import { cleanupTestData } from './test-cleanup.js';
 
 /**
  * Global setup — runs once before all E2E tests.
  *
  * Responsibilities:
- * 1. Verify backend API is reachable
- * 2. Ensure test infrastructure (DB, Redis) is healthy
- * 3. Seed any base data needed across all specs
+ * 1. Clean up test data from previous runs (prevents cross-run contamination)
+ * 2. Verify backend API is reachable
+ * 3. Ensure test infrastructure (DB, Redis) is healthy
  */
 async function globalSetup(_config: FullConfig) {
   const API_BASE = process.env.E2E_API_BASE || 'https://localhost';
 
   // Accept self-signed certs on localhost.
-  // Node's built-in fetch uses undici and does NOT accept https.Agent.
-  // NODE_TLS_REJECT_UNAUTHORIZED is the only portable way with native fetch.
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
+  // ── Clean up leftover test data from previous runs ──
+  // Without this, repeated runs accumulate orphaned users/documents/sessions
+  // causing username collisions and auth conflicts.
+  try {
+    await cleanupTestData();
+  } catch (e) {
+    console.warn('[global-setup] Cleanup failed (non-fatal):', (e as Error).message);
+  }
 
   // ── Verify backend health ──
   let healthy = false;

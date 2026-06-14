@@ -62,7 +62,7 @@ export default defineConfig({
       devOptions: {
         enabled: true,
         type: 'module',
-        navigateFallback: 'index.html',
+        // No navigateFallback — CSP nonce requires NetworkOnly for HTML
       },
       manifest: {
         name: 'CO-MD — Collaborative Markdown Editor',
@@ -85,6 +85,12 @@ export default defineConfig({
         // with no nonce on <script> tags. When the SW serves it, the browser blocks
         // all scripts because 'strict-dynamic' ignores 'self' and requires nonces.
         // SPA fallback is handled by the backend's notFound middleware instead.
+        // navigateFallbackDenylist: [/.*/] prevents vite-plugin-pwa / Workbox
+        // from auto-injecting a NavigationRoute that would error with
+        // "non-precached-url: index.html" (index.html is intentionally NOT
+        // precached — CSP nonce is per-request). SPA fallback is served by
+        // the backend's notFound middleware.
+        navigateFallbackDenylist: [/.*/],
         maximumFileSizeToCacheInBytes: 2 * 1024 * 1024,
         cleanupOutdatedCaches: true,
         clientsClaim: true,
@@ -117,12 +123,27 @@ export default defineConfig({
   },
   // ── Chunk splitting: keep heavy deps out of the main editor chunk ──
   // Shiki (~600KB) is already split via dynamic import() in Editor.tsx.
-  // Yjs ecosystem (~300KB) is split via manualChunks below.
+  // Milkdown / CodeMirror / ProseMirror / Yjs are split into dedicated vendor
+  // chunks with content-hash filenames → 30-day browser cache.
   build: {
+    target: 'esnext', // Skip unnecessary downleveling — all target browsers support ES2020+
+    // Bundle size budget — warns if any chunk exceeds the limit.
+    // Prevents regression of the code-splitting work done in Step 1-3.
+    chunkSizeWarningLimit: 800, // 800KB — vendor/shiki chunks legitimately exceed 400KB
     rollupOptions: {
       output: {
-        manualChunks: {
-          'vendor-yjs': ['yjs', 'y-indexeddb', 'lib0'],
+        manualChunks(id) {
+          // Milkdown editor framework (Crepe, core, utils, presets)
+          if (id.includes('node_modules/@milkdown/')) return 'vendor-milkdown';
+          // CodeMirror — text editing engine bundled with Milkdown Crepe
+          if (id.includes('node_modules/@codemirror/')) return 'vendor-codemirror';
+          // ProseMirror — document model used by Milkdown
+          if (id.includes('node_modules/prosemirror-')) return 'vendor-prosemirror';
+          // Yjs CRDT ecosystem
+          if (id.includes('node_modules/yjs') || id.includes('node_modules/y-indexeddb') ||
+              id.includes('node_modules/lib0') || id.includes('node_modules/y-protocols'))
+            return 'vendor-yjs';
+          // Return undefined for all other modules — Rollup handles auto-chunking
         },
       },
     },

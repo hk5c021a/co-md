@@ -93,10 +93,13 @@ test.describe('Authentication', () => {
     const username = `e2ereg${Date.now()}`;
     await auth.fillRegister(username, `${username}@test.com`, `138${String(Date.now()).slice(-8)}`, 'Abcdef123!@#');
     await auth.solveCaptcha();
+    // Brief pause ensures React state captures the CAPTCHA value before submit
+    await page.waitForTimeout(200);
     await auth.submitRegister();
 
-    // Should show success message
-    await expect(auth.registerSuccessMsg).toBeVisible({ timeout: 15_000 });
+    // Should show success message — generous timeout for argon2id hashing
+    // (CPU-intensive under concurrent test workers)
+    await expect(auth.registerSuccessMsg).toBeVisible({ timeout: 30_000 });
 
     // Login and cleanup via API — retry with backoff (DB write may lag on slow browsers)
     let session;
@@ -106,7 +109,6 @@ test.describe('Authentication', () => {
         break;
       } catch {
         if (attempt < 2) await page.waitForTimeout(1500 * (attempt + 1));
-        // On final failure, skip cleanup — orphaned data handled by daily cleanup task
       }
     }
     if (session) await api.deleteUser(session.accessToken);

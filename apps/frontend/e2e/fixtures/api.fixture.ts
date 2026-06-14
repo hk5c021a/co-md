@@ -81,6 +81,8 @@ export const test = base.extend<ApiFixture>({
   api: async ({ page }, use) => {
     // Use page.request — inherits ignoreHTTPSErrors from browser context
     const request = page.request;
+    // Track the last session for automatic teardown cleanup
+    let cleanupToken: string | null = null;
     const api = {
       async healthCheck(): Promise<boolean> {
         try {
@@ -175,6 +177,9 @@ export const test = base.extend<ApiFixture>({
         if (!r.ok() || !body.success) {
           throw new Error(`Login failed: ${JSON.stringify(body)}`);
         }
+
+        // Track for automatic teardown cleanup
+        cleanupToken = body.data.accessToken;
 
         return {
           user: {
@@ -300,7 +305,17 @@ export const test = base.extend<ApiFixture>({
 
     await use(api);
 
-    // No automatic cleanup — each test is responsible for its own data
+    // Auto-cleanup: delete the last registered user to prevent cross-test
+    // contamination within a run. Best-effort — failure is non-fatal.
+    if (cleanupToken) {
+      try {
+        await request.delete(`${API_BASE}/api/users/me`, {
+          headers: { ...JSON_HEADERS, Authorization: `Bearer ${cleanupToken}` },
+        });
+      } catch {
+        // User might already be deleted or token expired — ignore
+      }
+    }
   },
 });
 
